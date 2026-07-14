@@ -279,6 +279,16 @@
       overflow: hidden;
     }
 
+    .session-project-context {
+      margin: -2px 0 8px;
+      font-size: 10.5px;
+      color: var(--muted);
+      font-family: var(--font-mono);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
     .session-meta {
       display: flex;
       align-items: center;
@@ -299,6 +309,56 @@
       font-weight: 500;
       font-family: var(--font-mono);
       text-transform: lowercase;
+    }
+
+    .sessions-toolbar {
+      display: flex;
+      gap: 6px;
+      padding: 8px 12px 10px;
+      border-bottom: 1px solid var(--hair);
+      background: var(--surface);
+      flex-wrap: wrap;
+    }
+
+    #projects-panel .sessions-toolbar {
+      background: var(--side-bg);
+      border-bottom: 1px solid var(--side-hair);
+    }
+
+    .sessions-search {
+      flex: 1 1 160px;
+      min-width: 0;
+      background: var(--surface-2);
+      border: 1px solid var(--hair);
+      border-radius: var(--radius-sm);
+      padding: 6px 9px;
+      font-size: 12.5px;
+      font-family: var(--font-sans);
+      color: var(--ink);
+      outline: none;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .sessions-search:focus {
+      border-color: var(--accent-hair);
+      background: #fff;
+    }
+
+    .sessions-scope {
+      flex: 0 0 auto;
+      background: var(--surface-2);
+      border: 1px solid var(--hair);
+      border-radius: var(--radius-sm);
+      padding: 6px 8px;
+      font-size: 12px;
+      font-family: var(--font-sans);
+      color: var(--ink);
+      cursor: pointer;
+    }
+
+    .sessions-scope:focus {
+      outline: none;
+      border-color: var(--accent-hair);
     }
 
     .load-more-wrap {
@@ -346,6 +406,7 @@
       border-radius: var(--radius);
       box-shadow: none;
       padding: 12px 14px;
+      scroll-margin-top: 12px;
     }
 
     .message.role-user {
@@ -711,6 +772,130 @@
       font-size: 11px;
     }
 
+    .messages-shell {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      background: var(--surface);
+    }
+
+    #messages-panel .messages-shell > .panel-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .message-outline {
+      width: 250px;
+      flex: 0 0 250px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--hair);
+      background: var(--surface-2);
+      transition: width 0.15s ease, flex-basis 0.15s ease;
+    }
+
+    .message-outline.collapsed {
+      width: 42px;
+      flex-basis: 42px;
+    }
+
+    .message-outline-header {
+      padding: 10px 10px 8px;
+      border-bottom: 1px solid var(--hair);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .message-outline-title {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .message-outline-toggle {
+      background: var(--surface);
+      border: 1px solid var(--hair);
+      border-radius: var(--radius-sm);
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 12px;
+      height: 24px;
+      min-width: 24px;
+      padding: 0 7px;
+    }
+
+    .message-outline-toggle:hover {
+      border-color: var(--hair-2);
+      color: var(--ink);
+    }
+
+    .message-outline-list {
+      flex: 1;
+      min-height: 0;
+      overflow: auto;
+      padding: 8px;
+    }
+
+    .message-outline-item {
+      width: 100%;
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--ink-2);
+      cursor: pointer;
+      display: block;
+      margin-bottom: 4px;
+      padding: 8px;
+      text-align: left;
+    }
+
+    .message-outline-item:hover {
+      background: var(--surface);
+      border-color: var(--hair);
+    }
+
+    .message-outline-item-title {
+      font-size: 12px;
+      font-weight: 500;
+      line-height: 1.35;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .message-outline-item-time {
+      color: var(--muted);
+      font-family: var(--font-mono);
+      font-size: 10px;
+      margin-top: 4px;
+    }
+
+    .message-outline-empty {
+      color: var(--muted);
+      font-size: 12px;
+      padding: 10px 2px;
+    }
+
+    .message-outline.collapsed .message-outline-title,
+    .message-outline.collapsed .message-outline-list {
+      display: none;
+    }
+
+    .message-outline.collapsed .message-outline-header {
+      justify-content: center;
+      padding-left: 8px;
+      padding-right: 8px;
+    }
+
     @media (max-width: 1024px) {
       #app {
         grid-template-columns: 1fr;
@@ -728,6 +913,22 @@
 
       .panel:last-child {
         border-bottom: none;
+      }
+
+      .messages-shell {
+        flex-direction: column;
+      }
+
+      .message-outline {
+        width: auto;
+        flex: 0 0 120px;
+        border-left: none;
+        border-top: 1px solid var(--hair);
+      }
+
+      .message-outline.collapsed {
+        width: auto;
+        flex-basis: 40px;
       }
     }
   </style>
@@ -754,12 +955,15 @@
       sessionsLimit: 50,
       sessionsHasMore: false,
       sessionsTotal: null,
+      sessionsQuery: "",
+      sessionsScope: "all",
 
       selectedSessionId: null,
       sessionLoading: false,
       sessionError: null,
       sessionData: null,
       messages: [],
+      messageOutlineCollapsed: false,
       sessionStack: []
     };
 
@@ -773,6 +977,7 @@
     let sessionsRequestId = 0;
     let sessionRequestId = 0;
     let toolResultCounter = 0;
+    let sessionsSearchDebounceTimer = null;
 
     function escapeHtml(str) {
       return String(str ?? "")
@@ -1122,9 +1327,15 @@
     function normalizeSession(item, index) {
       const id = String(item?.id ?? item?.session_id ?? item?.sessionId ?? item?.uuid ?? `session-${index}`);
       const summaryValue = item?.summary ?? item?.summary_text ?? item?.summaryText ?? item?.has_summary ?? item?.hasSummary;
+      const projectId = item?.project_id ?? item?.projectId ?? null;
+      const project = state.projects.find((p) => p.id === String(projectId));
+      const projectWorktree = item?.project_worktree ?? item?.projectWorktree ?? project?.worktree ?? null;
       return {
         raw: item,
         id,
+        projectId: projectId === null || projectId === undefined ? null : String(projectId),
+        projectName: item?.project_name ?? item?.projectName ?? project?.name ?? null,
+        projectWorktree,
         title: item?.title ?? item?.name ?? item?.session_title ?? item?.sessionTitle ?? "Untitled",
         updatedAt: parseTimestamp(item?.time_updated ?? item?.updated_at ?? item?.updatedAt ?? item?.time_created ?? item?.created_at),
         hasSummary: Boolean(summaryValue)
@@ -1286,64 +1497,134 @@
           .join("");
       }
 
-      el.projects.innerHTML = `${header}<div class="panel-body">${body}</div>`;
+      el.projects.innerHTML = `${header}${buildSessionsToolbarHtml()}<div class="panel-body">${body}</div>`;
+    }
+
+    function buildSessionsHeaderHtml(projectName, subtitleText) {
+      return `
+        <div class="panel-header">
+          <div style="flex:1;min-width:0;">
+            <h2 class="panel-title">${escapeHtml(projectName)}</h2>
+            <div class="panel-subtitle">${escapeHtml(subtitleText)}</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function buildSessionsToolbarHtml() {
+      const scope = state.sessionsScope;
+      return `
+        <div class="sessions-toolbar">
+          <input
+            type="search"
+            class="sessions-search"
+            data-action="search-sessions"
+            aria-label="Search sessions across projects by keyword"
+            placeholder="Search all sessions..."
+            value="${escapeHtml(state.sessionsQuery)}"
+            autocomplete="off"
+            spellcheck="false" />
+          <select class="sessions-scope" data-action="scope-sessions" aria-label="Search scope">
+            <option value="all"${scope === "all" ? " selected" : ""}>All messages</option>
+            <option value="user"${scope === "user" ? " selected" : ""}>User input</option>
+            <option value="assistant"${scope === "assistant" ? " selected" : ""}>Model response</option>
+          </select>
+        </div>
+      `;
+    }
+
+    function buildSessionsBodyHtml() {
+      const isSearching = Boolean(state.sessionsQuery);
+
+      if (!state.selectedProjectId && !isSearching) {
+        return `<div class="state">Select a project or search all projects.</div>`;
+      }
+
+      if (state.sessionsLoading && state.sessions.length === 0) {
+        return `<div class="state">Loading...</div>`;
+      }
+
+      if (state.sessionsError) {
+        return `<div class="state error">${escapeHtml(state.sessionsError)}</div>`;
+      }
+
+      if (!state.sessions.length) {
+        if (state.sessionsQuery) {
+          const scopeLabel =
+            state.sessionsScope === "user"
+              ? " in user messages"
+              : state.sessionsScope === "assistant"
+                ? " in model responses"
+                : "";
+          return `<div class="state">No sessions match "${escapeHtml(state.sessionsQuery)}"${scopeLabel}.</div>`;
+        }
+        return `<div class="state">No sessions found.</div>`;
+      }
+
+      let body = state.sessions
+        .map((session) => {
+          const selected = session.id === state.selectedSessionId ? "selected" : "";
+          const time = session.updatedAt ? timeAgo(session.updatedAt) : "unknown";
+          const date = shortDate(session.updatedAt);
+          const displayTime = date ? `${date} · ${time}` : time;
+          const exact = session.updatedAt ? formatDate(session.updatedAt) : "Unknown";
+          const projectName = session.projectName || (session.projectWorktree ? pathBasename(session.projectWorktree) : "Unknown project");
+          const projectPath = session.projectWorktree || "";
+          const projectContext = projectPath
+            ? `${projectName} · ${truncate(projectPath, 48)}`
+            : projectName;
+          return `
+            <button class="session-card ${selected}" data-action="select-session" data-session-id="${escapeHtml(session.id)}">
+              <p class="session-title" title="${escapeHtml(session.title || "Untitled")}">${escapeHtml(session.title || "Untitled")}</p>
+              ${isSearching ? `<div class="session-project-context" title="${escapeHtml(projectPath || projectName)}">${escapeHtml(projectContext)}</div>` : ""}
+              <div class="session-meta">
+                <span title="${escapeHtml(exact)}">${escapeHtml(displayTime)}</span>
+                ${session.hasSummary ? '<span class="badge">summarized</span>' : ""}
+              </div>
+            </button>
+          `;
+        })
+        .join("");
+
+      if (state.sessionsHasMore) {
+        body += `
+          <div class="load-more-wrap">
+            <button class="load-more-btn" data-action="load-more-sessions" ${state.sessionsLoadingMore ? "disabled" : ""}>
+              ${state.sessionsLoadingMore ? "Loading..." : "Load more"}
+            </button>
+          </div>
+        `;
+      }
+
+      return body;
     }
 
     function renderSessionsPanel() {
       const selectedProject = getSelectedProject();
-      const projectName = selectedProject ? selectedProject.name : "Sessions";
+      const isSearching = Boolean(state.sessionsQuery);
+      const projectName = isSearching ? "Search results" : selectedProject ? selectedProject.name : "Sessions";
       const totalLabel = state.sessionsTotal !== null ? ` / ${state.sessionsTotal}` : "";
+      const subtitleText = isSearching
+        ? `${state.sessions.length}${totalLabel} matching sessions across projects`
+        : `${state.sessions.length}${totalLabel} sessions`;
+      const existingToolbar = el.sessions.querySelector(".sessions-toolbar");
+      const existingBody = el.sessions.querySelector(".panel-body");
+      const existingSubtitle = el.sessions.querySelector(".panel-subtitle");
+      const existingTitle = el.sessions.querySelector(".panel-title");
+      const wantToolbar = false;
+      const hasToolbar = Boolean(existingToolbar);
+      const renderedProjectId = el.sessions.dataset.projectId || "";
+      const currentProjectId = state.selectedProjectId || "";
 
-      const header = `
-        <div class="panel-header">
-          <div>
-            <h2 class="panel-title">${escapeHtml(projectName)}</h2>
-            <div class="panel-subtitle">${state.sessions.length}${totalLabel} sessions</div>
-          </div>
-        </div>
-      `;
-
-      let body = "";
-      if (!state.selectedProjectId) {
-        body = `<div class="state">Select a project.</div>`;
-      } else if (state.sessionsLoading && state.sessions.length === 0) {
-        body = `<div class="state">Loading...</div>`;
-      } else if (state.sessionsError) {
-        body = `<div class="state error">${escapeHtml(state.sessionsError)}</div>`;
-      } else if (!state.sessions.length) {
-        body = `<div class="state">No sessions found.</div>`;
-      } else {
-        body = state.sessions
-          .map((session) => {
-            const selected = session.id === state.selectedSessionId ? "selected" : "";
-            const time = session.updatedAt ? timeAgo(session.updatedAt) : "unknown";
-            const date = shortDate(session.updatedAt);
-            const displayTime = date ? `${date} · ${time}` : time;
-            const exact = session.updatedAt ? formatDate(session.updatedAt) : "Unknown";
-            return `
-              <button class="session-card ${selected}" data-action="select-session" data-session-id="${escapeHtml(session.id)}">
-                <p class="session-title" title="${escapeHtml(session.title || "Untitled")}">${escapeHtml(session.title || "Untitled")}</p>
-                <div class="session-meta">
-                  <span title="${escapeHtml(exact)}">${escapeHtml(displayTime)}</span>
-                  ${session.hasSummary ? '<span class="badge">summarized</span>' : ""}
-                </div>
-              </button>
-            `;
-          })
-          .join("");
-
-        if (state.sessionsHasMore) {
-          body += `
-            <div class="load-more-wrap">
-              <button class="load-more-btn" data-action="load-more-sessions" ${state.sessionsLoadingMore ? "disabled" : ""}>
-                ${state.sessionsLoadingMore ? "Loading..." : "Load more"}
-              </button>
-            </div>
-          `;
-        }
+      if (renderedProjectId === currentProjectId && hasToolbar === wantToolbar && existingBody && existingSubtitle && existingTitle) {
+        existingTitle.textContent = projectName;
+        existingSubtitle.textContent = subtitleText;
+        existingBody.innerHTML = buildSessionsBodyHtml();
+        return;
       }
 
-      el.sessions.innerHTML = `${header}<div class="panel-body">${body}</div>`;
+      el.sessions.innerHTML = `${buildSessionsHeaderHtml(projectName, subtitleText)}<div class="panel-body">${buildSessionsBodyHtml()}</div>`;
+      el.sessions.dataset.projectId = currentProjectId;
     }
 
     function renderToolResultPart(output) {
@@ -1514,6 +1795,58 @@
       `;
     }
 
+    function messageDomId(messageId) {
+      return `message-${String(messageId ?? "").replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+    }
+
+    function getMessagePreview(message) {
+      for (const part of message?.parts ?? []) {
+        const type = String(part?.type ?? "text").toLowerCase();
+        if (type !== "text" && type !== "reasoning") continue;
+        const text = toDisplayString(part?.text ?? part?.content ?? part?.value).replace(/\s+/g, " ").trim();
+        if (text) return truncate(text, 86);
+      }
+
+      for (const part of message?.parts ?? []) {
+        const text = toDisplayString(part?.text ?? part?.content ?? part?.value).replace(/\s+/g, " ").trim();
+        if (text) return truncate(text, 86);
+      }
+
+      return "(empty user input)";
+    }
+
+    function getUserInputMessages() {
+      return state.messages.filter((message) => message?._type !== "subagent" && message.role === "user");
+    }
+
+    function renderMessageOutline() {
+      const collapsed = state.messageOutlineCollapsed;
+      const userMessages = getUserInputMessages();
+      const title = `${userMessages.length} user input${userMessages.length === 1 ? "" : "s"}`;
+      const items = userMessages.length
+        ? userMessages.map((message, index) => {
+          const label = getMessagePreview(message);
+          const time = message.timestamp ? shortDate(message.timestamp) || timeAgo(message.timestamp) : "";
+          return `
+            <button class="message-outline-item" data-action="scroll-message" data-message-id="${escapeHtml(message.id)}" title="${escapeHtml(label)}">
+              <div class="message-outline-item-title">${escapeHtml(label)}</div>
+              <div class="message-outline-item-time">${escapeHtml(time || `Input ${index + 1}`)}</div>
+            </button>
+          `;
+        }).join("")
+        : `<div class="message-outline-empty">No user inputs in this session.</div>`;
+
+      return `
+        <aside class="message-outline ${collapsed ? "collapsed" : ""}" aria-label="User input navigation">
+          <div class="message-outline-header">
+            <div class="message-outline-title" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+            <button class="message-outline-toggle" data-action="toggle-message-outline" aria-label="${collapsed ? "Expand user input navigation" : "Collapse user input navigation"}">${collapsed ? "‹" : "›"}</button>
+          </div>
+          <div class="message-outline-list">${items}</div>
+        </aside>
+      `;
+    }
+
     function renderMessage(message) {
       if (message?._type === "subagent") {
         return renderSubagentCard(message);
@@ -1552,7 +1885,7 @@
         : `<div class="part tiny-muted">(no message content)</div>`;
 
       return `
-        <article class="message ${roleClass}">
+        <article class="message ${roleClass}" id="${escapeHtml(messageDomId(message.id))}" data-message-id="${escapeHtml(message.id)}">
           <div class="message-meta">${meta.join("")}</div>
           ${parts}
         </article>
@@ -1597,7 +1930,8 @@
         body = `<div class="messages">${messagesHtml}</div>`;
       }
 
-      el.messages.innerHTML = `${header}<div class="panel-body">${body}</div>`;
+      const outline = state.selectedSessionId && !state.sessionLoading && !state.sessionError ? renderMessageOutline() : "";
+      el.messages.innerHTML = `${header}<div class="messages-shell"><div class="panel-body">${body}</div>${outline}</div>`;
     }
 
     function extractTotal(payload) {
@@ -1643,7 +1977,23 @@
     }
 
     async function loadSessions({ reset = false } = {}) {
-      if (!state.selectedProjectId) return;
+      const requestQuery = state.sessionsQuery;
+      const requestScope = state.sessionsScope;
+      const isGlobalSearch = Boolean(requestQuery);
+      if (!state.selectedProjectId && !isGlobalSearch) {
+        sessionsRequestId++;
+        if (reset) {
+          state.sessions = [];
+          state.sessionsLoading = false;
+          state.sessionsLoadingMore = false;
+          state.sessionsError = null;
+          state.sessionsPage = 1;
+          state.sessionsHasMore = false;
+          state.sessionsTotal = null;
+          renderSessionsPanel();
+        }
+        return;
+      }
 
       if (reset) {
         state.sessionsLoading = true;
@@ -1663,10 +2013,24 @@
       const requestId = ++sessionsRequestId;
 
       try {
-        const payload = await fetchJson(
-          `/api/projects/${encodeURIComponent(projectId)}/sessions?page=${nextPage}&limit=${state.sessionsLimit}`
-        );
-        if (requestId !== sessionsRequestId || projectId !== state.selectedProjectId) return;
+        const params = new URLSearchParams({
+          page: String(nextPage),
+          limit: String(state.sessionsLimit)
+        });
+        if (requestQuery) params.set("q", requestQuery);
+        if (requestScope && requestScope !== "all") {
+          params.set("scope", requestScope);
+        }
+        const url = isGlobalSearch
+          ? `/api/sessions/search?${params.toString()}`
+          : `/api/projects/${encodeURIComponent(projectId)}/sessions?${params.toString()}`;
+        const payload = await fetchJson(url);
+        if (
+          requestId !== sessionsRequestId ||
+          projectId !== state.selectedProjectId ||
+          requestQuery !== state.sessionsQuery ||
+          requestScope !== state.sessionsScope
+        ) return;
 
         const incoming = extractSessions(payload).map((item, index) => normalizeSession(item, index));
 
@@ -1688,10 +2052,20 @@
         );
         state.sessionsPage = nextPage;
       } catch (error) {
-        if (requestId !== sessionsRequestId || projectId !== state.selectedProjectId) return;
+        if (
+          requestId !== sessionsRequestId ||
+          projectId !== state.selectedProjectId ||
+          requestQuery !== state.sessionsQuery ||
+          requestScope !== state.sessionsScope
+        ) return;
         state.sessionsError = error instanceof Error ? error.message : String(error);
       } finally {
-        if (requestId !== sessionsRequestId || projectId !== state.selectedProjectId) return;
+        if (
+          requestId !== sessionsRequestId ||
+          projectId !== state.selectedProjectId ||
+          requestQuery !== state.sessionsQuery ||
+          requestScope !== state.sessionsScope
+        ) return;
         state.sessionsLoading = false;
         state.sessionsLoadingMore = false;
         renderSessionsPanel();
@@ -1747,6 +2121,10 @@
     }
 
     function clearSelectedProject() {
+      if (sessionsSearchDebounceTimer) {
+        clearTimeout(sessionsSearchDebounceTimer);
+        sessionsSearchDebounceTimer = null;
+      }
       state.selectedProjectId = null;
       state.sessions = [];
       state.sessionsLoading = false;
@@ -1755,6 +2133,8 @@
       state.sessionsPage = 1;
       state.sessionsHasMore = false;
       state.sessionsTotal = null;
+      state.sessionsQuery = "";
+      state.sessionsScope = "all";
       clearSelectedSession();
       renderProjectsPanel();
       renderSessionsPanel();
@@ -1785,10 +2165,16 @@
         const projectId = target.dataset.projectId;
         if (!projectId || projectId === state.selectedProjectId) return;
 
+        if (sessionsSearchDebounceTimer) {
+          clearTimeout(sessionsSearchDebounceTimer);
+          sessionsSearchDebounceTimer = null;
+        }
         state.selectedProjectId = projectId;
         state.sessions = [];
         state.sessionsError = null;
         state.sessionsHasMore = false;
+        state.sessionsQuery = "";
+        state.sessionsScope = "all";
         clearSelectedSession();
         renderProjectsPanel();
         renderSessionsPanel();
@@ -1845,8 +2231,65 @@
           target.dataset.expanded = "true";
           target.textContent = "Show less";
         }
+        return;
+      }
+
+      if (action === "toggle-message-outline") {
+        state.messageOutlineCollapsed = !state.messageOutlineCollapsed;
+        renderMessagesPanel();
+        return;
+      }
+
+      if (action === "scroll-message") {
+        const messageId = target.dataset.messageId;
+        if (!messageId) return;
+
+        const messageEl = document.getElementById(messageDomId(messageId));
+        if (!messageEl) return;
+        messageEl.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     }
+
+    function handleSessionsSearchInput(target) {
+      const trimmed = (target.value ?? "").trim();
+      if (target.value !== trimmed) target.value = trimmed;
+      state.sessionsQuery = trimmed;
+      if (sessionsSearchDebounceTimer) clearTimeout(sessionsSearchDebounceTimer);
+      if (!trimmed) {
+        sessionsSearchDebounceTimer = null;
+        loadSessions({ reset: true });
+        return;
+      }
+      sessionsSearchDebounceTimer = setTimeout(() => {
+        sessionsSearchDebounceTimer = null;
+        loadSessions({ reset: true });
+      }, 300);
+    }
+
+    document.addEventListener("input", (event) => {
+      const target = event.target;
+      if (!target || target.dataset?.action !== "search-sessions") return;
+      handleSessionsSearchInput(target);
+    });
+
+    document.addEventListener("search", (event) => {
+      const target = event.target;
+      if (!target || target.dataset?.action !== "search-sessions") return;
+      handleSessionsSearchInput(target);
+    }, true);
+
+    document.addEventListener("change", (event) => {
+      const target = event.target;
+      if (!target || target.dataset?.action !== "scope-sessions") return;
+
+      const value = target.value;
+      state.sessionsScope = value === "user" || value === "assistant" ? value : "all";
+      if (sessionsSearchDebounceTimer) {
+        clearTimeout(sessionsSearchDebounceTimer);
+        sessionsSearchDebounceTimer = null;
+      }
+      loadSessions({ reset: true });
+    });
 
     document.addEventListener("click", (event) => {
       if (event.target.classList?.contains("part-image")) {
@@ -1867,6 +2310,7 @@
 
       const target = event.target.closest("[data-action]");
       if (!target) return;
+      if (target.dataset.action === "search-sessions" || target.dataset.action === "scope-sessions") return;
       event.preventDefault();
       void onAction(target.dataset.action, target);
     });
@@ -1877,6 +2321,24 @@
       const overlay = document.querySelector("div[style*='z-index:9999']");
       if (overlay) {
         overlay.remove();
+        return;
+      }
+
+      const activeEl = document.activeElement;
+      if (activeEl && activeEl.dataset?.action === "search-sessions") {
+        event.preventDefault();
+        if (state.sessionsQuery) {
+          state.sessionsQuery = "";
+          activeEl.value = "";
+          if (sessionsSearchDebounceTimer) {
+            clearTimeout(sessionsSearchDebounceTimer);
+            sessionsSearchDebounceTimer = null;
+          }
+          loadSessions({ reset: true });
+          return;
+        }
+
+        activeEl.blur();
         return;
       }
 
