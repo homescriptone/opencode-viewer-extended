@@ -37,12 +37,17 @@ type ProjectRow = {
 
 type SessionRow = {
   id: string;
+  project_id?: string | null;
+  project_name?: string | null;
+  project_worktree?: string | null;
   title: string | null;
   summary: string | null;
   directory: string | null;
   time_created: number | string | null;
   time_updated: number | string | null;
 };
+
+type Scope = "all" | "user" | "assistant";
 
 type SessionDetailRow = {
   id: string;
@@ -89,17 +94,104 @@ const projectStmt = db.query<ProjectRow>(
   "SELECT id, worktree, name, icon_color, time_created, time_updated FROM project ORDER BY time_updated DESC",
 );
 
-const sessionsCountStmt = db.query<{ total: number }>(
-  "SELECT COUNT(*) as total FROM session WHERE project_id = ? AND parent_id IS NULL",
+const sessionsCountNoQueryStmt = db.query<{ total: number }>(
+  `SELECT COUNT(*) as total
+   FROM session
+   WHERE project_id = ? AND parent_id IS NULL`,
 );
 
-const projectSessionsStmt = db.query<SessionRow>(
+const projectSessionsNoQueryStmt = db.query<SessionRow>(
   `SELECT id, title, NULL as summary, directory, time_created, time_updated
    FROM session
    WHERE project_id = ? AND parent_id IS NULL
-   ORDER BY time_updated DESC
+   ORDER BY time_updated DESC, id DESC
    LIMIT ? OFFSET ?`,
 );
+
+function buildSearchStatements(scope: Scope) {
+  const roleClause =
+    scope === "all" ? "" : `AND json_extract(m.data, '$.role') = '${scope}'`;
+  const commonWhere = `
+    WHERE s.project_id = ?
+      AND s.parent_id IS NULL
+      AND (
+        instr(lower(s.title), ?) > 0
+        OR EXISTS (
+          SELECT 1
+          FROM message m
+          JOIN part p ON p.message_id = m.id
+          WHERE m.session_id = s.id
+            AND json_extract(p.data, '$.type') IN ('text','reasoning')
+            AND instr(lower(json_extract(p.data, '$.text')), ?) > 0
+            ${roleClause}
+        )
+      )
+  `;
+
+  return {
+    list: db.query<SessionRow>(
+      `SELECT s.id, s.title, NULL as summary, s.directory, s.time_created, s.time_updated
+       FROM session s
+       ${commonWhere}
+       ORDER BY s.time_updated DESC, s.id DESC
+       LIMIT ? OFFSET ?`,
+    ),
+    count: db.query<{ total: number }>(
+      `SELECT COUNT(*) as total
+       FROM session s
+       ${commonWhere}`,
+    ),
+  };
+}
+
+const searchStmts: Record<Scope, ReturnType<typeof buildSearchStatements>> = {
+  all: buildSearchStatements("all"),
+  user: buildSearchStatements("user"),
+  assistant: buildSearchStatements("assistant"),
+};
+
+function buildGlobalSearchStatements(scope: Scope) {
+  const roleClause =
+    scope === "all" ? "" : `AND json_extract(m.data, '$.role') = '${scope}'`;
+  const commonWhere = `
+    WHERE s.parent_id IS NULL
+      AND (
+        instr(lower(s.title), ?) > 0
+        OR EXISTS (
+          SELECT 1
+          FROM message m
+          JOIN part p ON p.message_id = m.id
+          WHERE m.session_id = s.id
+            AND json_extract(p.data, '$.type') IN ('text','reasoning')
+            AND instr(lower(json_extract(p.data, '$.text')), ?) > 0
+            ${roleClause}
+        )
+      )
+  `;
+
+  return {
+    list: db.query<SessionRow>(
+      `SELECT s.id, s.project_id, project.name as project_name, project.worktree as project_worktree,
+              s.title, NULL as summary, s.directory, s.time_created, s.time_updated
+       FROM session s
+       LEFT JOIN project ON project.id = s.project_id
+       ${commonWhere}
+       ORDER BY s.time_updated DESC, s.id DESC
+       LIMIT ? OFFSET ?`,
+    ),
+    count: db.query<{ total: number }>(
+      `SELECT COUNT(*) as total
+       FROM session s
+       ${commonWhere}`,
+    ),
+  };
+}
+
+const globalSearchStmts: Record<Scope, ReturnType<typeof buildGlobalSearchStatements>> = {
+  all: buildGlobalSearchStatements("all"),
+  user: buildGlobalSearchStatements("user"),
+  assistant: buildGlobalSearchStatements("assistant"),
+};
 
 const sessionStmt = db.query<SessionDetailRow>(
   "SELECT id, project_id, parent_id, title, NULL as summary, directory, time_created, time_updated FROM session WHERE id = ?",
@@ -235,6 +327,11 @@ function getPagination(url: URL): { page: number; limit: number; offset: number 
   return { page, limit, offset: (page - 1) * limit };
 }
 
+function normalizeScope(raw: string | null): Scope {
+  const value = (raw ?? "all").toLowerCase();
+  return value === "user" || value === "assistant" ? value : "all";
+}
+
 function json(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
@@ -358,9 +455,28 @@ const server = Bun.serve({
       if (projectSessionsMatch) {
         const projectId = decodeURIComponent(projectSessionsMatch[1]);
         const { page, limit, offset } = getPagination(url);
+        const qRaw = (url.searchParams.get("q") ?? "").trim();
+        const scope = normalizeScope(url.searchParams.get("scope"));
 
-        const totalRow = sessionsCountStmt.get(projectId) as { total: number } | null;
-        const sessions = projectSessionsStmt.all(projectId, limit, offset);
+        if (!qRaw) {
+          const totalRow = sessionsCountNoQueryStmt.get(projectId) as { total: number } | null;
+          const sessions = projectSessionsNoQueryStmt.all(projectId, limit, offset);
+
+          return json({
+            projectId,
+            page,
+            limit,
+            total: totalRow?.total ?? 0,
+            sessions,
+            q: "",
+            scope,
+          });
+        }
+
+        const needle = qRaw.toLowerCase();
+        const stmts = searchStmts[scope];
+        const totalRow = stmts.count.get(projectId, needle, needle) as { total: number } | null;
+        const sessions = stmts.list.all(projectId, needle, needle, limit, offset);
 
         return json({
           projectId,
@@ -368,6 +484,39 @@ const server = Bun.serve({
           limit,
           total: totalRow?.total ?? 0,
           sessions,
+          q: qRaw,
+          scope,
+        });
+      }
+
+      if (pathname === "/api/sessions/search") {
+        const { page, limit, offset } = getPagination(url);
+        const qRaw = (url.searchParams.get("q") ?? "").trim();
+        const scope = normalizeScope(url.searchParams.get("scope"));
+
+        if (!qRaw) {
+          return json({
+            page,
+            limit,
+            total: 0,
+            sessions: [],
+            q: "",
+            scope,
+          });
+        }
+
+        const needle = qRaw.toLowerCase();
+        const stmts = globalSearchStmts[scope];
+        const totalRow = stmts.count.get(needle, needle) as { total: number } | null;
+        const sessions = stmts.list.all(needle, needle, limit, offset);
+
+        return json({
+          page,
+          limit,
+          total: totalRow?.total ?? 0,
+          sessions,
+          q: qRaw,
+          scope,
         });
       }
 
