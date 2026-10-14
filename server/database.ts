@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { Buffer } from "node:buffer";
-import { randomInt } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, normalize } from "node:path";
@@ -16,26 +16,19 @@ if (!existsSync(DB_PATH)) {
   process.exit(1);
 }
 
-const WRITE_ENABLED = process.env.OCV_WRITE === "1";
-
 let db: Database;
 
 try {
-  db = new Database(DB_PATH, { readonly: !WRITE_ENABLED });
+  db = new Database(DB_PATH);
 } catch (error) {
   console.error("Failed to open OpenCode database:", error);
   process.exit(1);
 }
 
-if (WRITE_ENABLED) {
-  try {
-    db.exec("PRAGMA foreign_keys = ON");
-  } catch {
-    /* foreign keys already enabled or unsupported; cascades still defined in schema */
-  }
-  console.warn(
-    "Write mode ENABLED (OCV_WRITE=1): destructive storage operations (delete, vacuum) are available.",
-  );
+try {
+  db.exec("PRAGMA foreign_keys = ON");
+} catch {
+  /* foreign keys already enabled or unsupported; cascades still defined in schema */
 }
 
 export type JsonObject = Record<string, unknown>;
@@ -228,6 +221,75 @@ export const subagentsStmt = db.query<SessionRow>(
 );
 
 export const partImageStmt = db.query<{ data: string }>("SELECT data FROM part WHERE id = ?");
+
+export function newId(prefix: string): string {
+  return `${prefix}_${randomUUID().replace(/-/g, "")}`;
+}
+
+export const insertProjectStmt = db.query(
+  `INSERT INTO project (id, worktree, name, icon_color, time_created, time_updated, sandboxes)
+   VALUES (?, ?, ?, ?, ?, ?, '[]')`,
+);
+
+export const insertSessionStmt = db.query(
+  `INSERT INTO session (id, project_id, parent_id, slug, directory, title, version, time_created, time_updated)
+   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+);
+
+export const insertMessageStmt = db.query(
+  `INSERT INTO message (id, session_id, time_created, time_updated, data)
+   VALUES (?, ?, ?, ?, ?)`,
+);
+
+export const insertPartStmt = db.query(
+  `INSERT INTO part (id, message_id, session_id, time_created, time_updated, data)
+   VALUES (?, ?, ?, ?, ?, ?)`,
+);
+
+export const deleteProjectStmt = db.query("DELETE FROM project WHERE id = ?");
+export const deleteSessionStmt = db.query("DELETE FROM session WHERE id = ?");
+export const deleteMessageStmt = db.query("DELETE FROM message WHERE id = ?");
+export const deletePartStmt = db.query("DELETE FROM part WHERE id = ?");
+
+const UPDATABLE_COLUMNS: Record<string, string[]> = {
+  project: ["worktree", "name", "icon_color", "icon_url", "icon_url_override", "vcs"],
+  session: [
+    "project_id",
+    "parent_id",
+    "title",
+    "slug",
+    "directory",
+    "version",
+    "share_url",
+    "agent",
+    "model",
+    "summary_additions",
+    "summary_deletions",
+    "summary_files",
+    "time_archived",
+    "time_compacting",
+  ],
+  message: ["session_id", "data"],
+  part: ["message_id", "session_id", "data"],
+};
+
+export function updateRow(
+  table: keyof typeof UPDATABLE_COLUMNS,
+  id: string,
+  fields: JsonObject,
+): number {
+  const allowed = UPDATABLE_COLUMNS[table];
+  const keys = Object.keys(fields).filter((key) => allowed.includes(key));
+  const values = keys.map((key) => fields[key] as string | number | null);
+
+  keys.push("time_updated");
+  values.push(Date.now());
+
+  const setClause = keys.map((key) => `${key} = ?`).join(", ");
+  const statement = db.query(`UPDATE ${table} SET ${setClause} WHERE id = ?`);
+  const result = statement.run(...values, id);
+  return result.changes;
+}
 
 export function parseJSON(value: string | null): JsonObject | null {
   if (!value) return null;

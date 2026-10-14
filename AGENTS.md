@@ -2,30 +2,45 @@
 
 ## Project
 
-OpenCode Session Viewer — a local read-only web GUI for browsing OpenCode AI coding sessions. Reads from the OpenCode SQLite database (`~/.local/share/opencode/opencode.db`) and renders a three-panel interface: projects, sessions, and messages with tool calls.
+OpenCode Session Viewer — a local web GUI for browsing and editing OpenCode AI coding sessions. Reads from and writes to the OpenCode SQLite database (`~/.local/share/opencode/opencode.db`) and renders a three-panel interface: projects, sessions, and messages with tool calls.
 
 ## Stack
 
 - **Runtime**: Bun (required — uses `bun:sqlite`)
-- **Server**: `server.ts` — single-file HTTP server, serves API + static files
-- **Frontend**: `public/index.html` — single-file vanilla HTML/CSS/JS, no build step
+- **Server**: `server/` — `launch.ts` (HTTP + REST API) and `database.ts` (SQLite layer)
+- **Frontend**: `public/` — `index.html`, `script.js`, `styles.css` (vanilla, no build step)
 - **CLI**: `bin/cli.ts` — entry point for `bunx opencode-viewer`
 
 ## Architecture
 
 ```
-bin/cli.ts          → CLI args, env setup, auto-open browser
-server.ts           → Bun.serve HTTP server, SQLite queries, REST API
-public/index.html   → Single-page app (vanilla JS, no framework)
+bin/cli.ts            → CLI args, env setup, auto-open browser
+server/launch.ts      → Bun.serve HTTP server, routing, static files
+server/database.ts    → SQLite connection, prepared statements, shared helpers
+public/index.html     → Page shell, loads styles.css + script.js
+public/script.js      → Single-page app logic (vanilla JS, no framework)
+public/styles.css     → Styles
 ```
 
-The server opens the database **read-only** and exposes:
+The server opens the database **read-write** (foreign keys enabled, so deletes cascade) and exposes:
+
+Reads:
 - `GET /api/projects` — list all projects
-- `GET /api/projects/:id/sessions?page=&limit=` — paginated sessions
+- `GET /api/projects/:id/sessions?page=&limit=&q=&scope=` — paginated / searchable sessions
+- `GET /api/sessions/search?q=&scope=&page=&limit=` — global session search
 - `GET /api/sessions/:id` — session detail with messages + parts
+- `GET /api/sessions/:id/subagents` — subagent sessions
 - `GET /api/parts/:id/image` — base64 image extraction from part data
 
-The frontend is entirely self-contained in one HTML file — all styles and JS inline. It fetches from the API and renders three panels with client-side state management.
+Writes (JSON body):
+- `POST /api/projects` · `PATCH|PUT /api/projects/:id` · `DELETE /api/projects/:id`
+- `POST /api/sessions` · `PATCH|PUT /api/sessions/:id` · `DELETE /api/sessions/:id`
+- `POST /api/sessions/:id/messages` · `PATCH|PUT /api/messages/:id` · `DELETE /api/messages/:id`
+- `POST /api/messages/:id/parts` · `PATCH|PUT /api/parts/:id` · `DELETE /api/parts/:id`
+
+IDs are generated server-side with typed prefixes (`proj_`, `ses_`, `msg_`, `prt_`) when omitted. Updates only apply whitelisted columns and auto-bump `time_updated`.
+
+The frontend is self-contained in `public/` — it fetches from the API and renders three panels with client-side state management.
 
 ## Design System
 
@@ -38,17 +53,16 @@ Uses the Koomi KB Redesign design language:
 ## Running
 
 ```bash
-bun run dev          # dev mode with watch
-bun run start        # production
-bunx opencode-viewer # via CLI
+bun run dev          # dev mode with watch (server/launch.ts)
+bun run start        # production (server/launch.ts)
+bunx opencode-viewer # via CLI (default port 3456, auto-opens browser)
 ```
 
-Default port `3456`. Set `OCV_PORT` or `OCV_DB_PATH` env vars to override.
+Default port `3456` when launched via the CLI; running `server/launch.ts` directly picks a random port unless `OCV_PORT` is set. Set `OCV_PORT` or `OCV_DB_PATH` to override.
 
 ## Conventions
 
 - No dependencies beyond Bun built-ins
 - Keep everything in minimal files — avoid splitting unless necessary
-- Frontend stays as a single HTML file (no bundler, no framework)
-- Server is read-only — never write to the database
 - All SQL queries use prepared statements
+- Server code lives in `server/`; `database.ts` owns the DB and shared helpers, `launch.ts` owns HTTP routing

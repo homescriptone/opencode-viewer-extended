@@ -10,6 +10,7 @@ import {
   corsHeaders,
   json,
   notFound,
+  badRequest,
   serveStatic,
   partImageStmt,
   allowedPartTypes,
@@ -29,7 +30,144 @@ import {
   JsonObject,
   parseJSON,
   extractPartImageDataUri,
+  newId,
+  updateRow,
+  insertProjectStmt,
+  insertSessionStmt,
+  insertMessageStmt,
+  insertPartStmt,
+  deleteProjectStmt,
+  deleteSessionStmt,
+  deleteMessageStmt,
+  deletePartStmt,
 } from "./database";
+
+const ENTITY_ROUTES: Array<{
+  pattern: RegExp;
+  table: "project" | "session" | "message" | "part";
+}> = [
+  { pattern: /^\/api\/projects\/([^/]+)$/, table: "project" },
+  { pattern: /^\/api\/sessions\/([^/]+)$/, table: "session" },
+  { pattern: /^\/api\/messages\/([^/]+)$/, table: "message" },
+  { pattern: /^\/api\/parts\/([^/]+)$/, table: "part" },
+];
+
+const DELETE_BY_TABLE = {
+  project: deleteProjectStmt,
+  session: deleteSessionStmt,
+  message: deleteMessageStmt,
+  part: deletePartStmt,
+} as const;
+
+function matchEntity(pathname: string): { table: "project" | "session" | "message" | "part"; id: string } | null {
+  for (const route of ENTITY_ROUTES) {
+    const match = pathname.match(route.pattern);
+    if (match) return { table: route.table, id: decodeURIComponent(match[1]) };
+  }
+  return null;
+}
+
+async function readJsonBody(req: Request): Promise<JsonObject | null> {
+  try {
+    const parsed = (await req.json()) as unknown;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as JsonObject;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function toJsonText(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (value !== null && typeof value === "object") return JSON.stringify(value);
+  return null;
+}
+
+async function handleWrite(req: Request, url: URL): Promise<Response> {
+  const { pathname } = url;
+  const method = req.method.toUpperCase();
+  const now = Date.now();
+
+  if (method === "POST") {
+    const body = await readJsonBody(req);
+    if (!body) return badRequest("Invalid JSON body");
+
+    if (pathname === "/api/projects") {
+      const worktree = getString(body.worktree);
+      if (!worktree) return badRequest("worktree is required");
+      const id = getString(body.id) ?? newId("proj");
+      insertProjectStmt.run(id, worktree, getString(body.name), getString(body.icon_color), now, now);
+      return json({ ok: true, id }, 201);
+    }
+
+    if (pathname === "/api/sessions") {
+      const projectId = getString(body.project_id);
+      if (!projectId) return badRequest("project_id is required");
+      const id = getString(body.id) ?? newId("ses");
+      const parentId = getString(body.parent_id);
+      const slug = getString(body.slug) ?? newId("ses");
+      const directory = getString(body.directory) ?? "";
+      const title = getString(body.title) ?? "Untitled session";
+      const version = getString(body.version) ?? "0.0.0";
+      try {
+        insertSessionStmt.run(id, projectId, parentId, slug, directory, title, version, now, now);
+      } catch (error) {
+        return badRequest(`Failed to create session: ${String(error)}`);
+      }
+      return json({ ok: true, id }, 201);
+    }
+
+    const messagesMatch = pathname.match(/^\/api\/sessions\/([^/]+)\/messages$/);
+    if (messagesMatch) {
+      const sessionId = decodeURIComponent(messagesMatch[1]);
+      const id = getString(body.id) ?? newId("msg");
+      const data = toJsonText(body.data) ?? "{}";
+      try {
+        insertMessageStmt.run(id, sessionId, now, now, data);
+      } catch (error) {
+        return badRequest(`Failed to create message: ${String(error)}`);
+      }
+      return json({ ok: true, id }, 201);
+    }
+
+    const partsMatch = pathname.match(/^\/api\/messages\/([^/]+)\/parts$/);
+    if (partsMatch) {
+      const messageId = decodeURIComponent(partsMatch[1]);
+      const sessionId = getString(body.session_id);
+      if (!sessionId) return badRequest("session_id is required");
+      const id = getString(body.id) ?? newId("prt");
+      const data = toJsonText(body.data) ?? "{}";
+      try {
+        insertPartStmt.run(id, messageId, sessionId, now, now, data);
+      } catch (error) {
+        return badRequest(`Failed to create part: ${String(error)}`);
+      }
+      return json({ ok: true, id }, 201);
+    }
+
+    return notFound();
+  }
+
+  if (method === "PATCH" || method === "PUT") {
+    const body = await readJsonBody(req);
+    if (!body) return badRequest("Invalid JSON body");
+    const target = matchEntity(pathname);
+    if (!target) return notFound();
+    const changes = updateRow(target.table, target.id, body);
+    return json({ ok: true, id: target.id, changed: changes });
+  }
+
+  if (method === "DELETE") {
+    const target = matchEntity(pathname);
+    if (!target) return notFound();
+    const result = DELETE_BY_TABLE[target.table].run(target.id);
+    return json({ ok: true, id: target.id, deleted: result.changes });
+  }
+
+  return json({ error: "Method not allowed" }, 405);
+}
 
 const server = Bun.serve({
   port: PORT,
@@ -42,7 +180,12 @@ const server = Bun.serve({
     }
 
     if (req.method !== "GET") {
-      return json({ error: "Method not allowed" }, 405);
+      try {
+        return await handleWrite(req, url);
+      } catch (error) {
+        console.error("Request error:", error);
+        return json({ error: "Internal server error" }, 500);
+      }
     }
 
     try {
