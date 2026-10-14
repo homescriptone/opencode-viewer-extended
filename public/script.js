@@ -22,13 +22,19 @@
       messages: [],
       messageOutlineCollapsed: false,
       sessionStack: [],
-      exportMenuOpen: false
+      exportMenuOpen: false,
+      selectMode: false,
+      selectedProjectIds: new Set(),
+      selectedSessionIds: new Set(),
+      pluginsOpen: false
     };
 
     const el = {
       projects: document.getElementById("projects-panel"),
       sessions: document.getElementById("sessions-panel"),
-      messages: document.getElementById("messages-panel")
+      messages: document.getElementById("messages-panel"),
+      bulkBar: document.getElementById("bulk-bar"),
+      modal: document.getElementById("modal-root")
     };
 
     let projectsRequestId = 0;
@@ -516,12 +522,21 @@
       return state.sessions.find((s) => s.id === state.selectedSessionId) || null;
     }
 
+    function hasBulkActions() {
+      return (window.OCV?.listBulkActions?.() ?? []).length > 0;
+    }
+
     function renderProjectsPanel() {
+      const plugins = window.OCV?.list?.() ?? [];
       const header = `
         <div class="panel-header">
           <div>
             <h2 class="panel-title">Projects</h2>
             <div class="panel-subtitle">${state.projects.length} total</div>
+          </div>
+          <div class="header-actions">
+            ${hasBulkActions() ? `<button class="header-btn ${state.selectMode ? "active" : ""}" data-action="toggle-select-mode">${state.selectMode ? "Done" : "Select"}</button>` : ""}
+            <button class="header-btn ${state.pluginsOpen ? "active" : ""}" data-action="toggle-plugins">Plugins${plugins.length ? ` (${plugins.length})` : ""}</button>
           </div>
         </div>
       `;
@@ -541,14 +556,28 @@
             const relativeTime = timeAgo(project.updatedAt);
             const compactDate = shortDate(project.updatedAt);
             const displayTime = compactDate ? `${compactDate} · ${relativeTime}` : relativeTime;
-            return `
-              <button class="project-row ${selected}" data-action="select-project" data-project-id="${escapeHtml(project.id)}">
+            const inner = `
                 <div class="project-top">
                   <span class="dot" style="background:${safeColor(project.iconColor)}"></span>
                   <span class="project-name" title="${escapeHtml(project.name)}">${escapeHtml(project.name)}</span>
                   <span class="project-time" title="${escapeHtml(titleDate)}">${escapeHtml(displayTime)}</span>
                 </div>
                 <div class="project-path" title="${escapeHtml(project.worktree || "")}">${escapeHtml(truncate(project.worktree || "(no worktree path)", 44))}</div>
+            `;
+
+            if (state.selectMode) {
+              const checked = state.selectedProjectIds.has(project.id);
+              return `
+                <div class="project-row selectable ${checked ? "checked" : ""}" data-action="toggle-project-select" data-project-id="${escapeHtml(project.id)}" role="checkbox" aria-checked="${checked}" tabindex="0">
+                  <span class="checkbox ${checked ? "checked" : ""}"></span>
+                  <div class="project-row-body">${inner}</div>
+                </div>
+              `;
+            }
+
+            return `
+              <button class="project-row ${selected}" data-action="select-project" data-project-id="${escapeHtml(project.id)}">
+                ${inner}
               </button>
             `;
           })
@@ -556,6 +585,7 @@
       }
 
       el.projects.innerHTML = `${header}${buildSessionsToolbarHtml()}<div class="panel-body">${body}</div>`;
+      renderBulkBar();
     }
 
     function buildSessionsHeaderHtml(projectName, subtitleText) {
@@ -565,6 +595,7 @@
             <h2 class="panel-title">${escapeHtml(projectName)}</h2>
             <div class="panel-subtitle">${escapeHtml(subtitleText)}</div>
           </div>
+          ${hasBulkActions() && state.sessions.length ? `<div class="header-actions"><button class="header-btn ${state.selectMode ? "active" : ""}" data-action="toggle-select-mode">${state.selectMode ? "Done" : "Select"}</button></div>` : ""}
         </div>
       `;
     }
@@ -631,14 +662,28 @@
           const projectContext = projectPath
             ? `${projectName} · ${truncate(projectPath, 48)}`
             : projectName;
-          return `
-            <button class="session-card ${selected}" data-action="select-session" data-session-id="${escapeHtml(session.id)}">
+          const inner = `
               <p class="session-title" title="${escapeHtml(session.title || "Untitled")}">${escapeHtml(session.title || "Untitled")}</p>
               ${isSearching ? `<div class="session-project-context" title="${escapeHtml(projectPath || projectName)}">${escapeHtml(projectContext)}</div>` : ""}
               <div class="session-meta">
                 <span title="${escapeHtml(exact)}">${escapeHtml(displayTime)}</span>
                 ${session.hasSummary ? '<span class="badge">summarized</span>' : ""}
               </div>
+          `;
+
+          if (state.selectMode) {
+            const checked = state.selectedSessionIds.has(session.id);
+            return `
+              <div class="session-card selectable ${checked ? "checked" : ""}" data-action="toggle-session-select" data-session-id="${escapeHtml(session.id)}" role="checkbox" aria-checked="${checked}" tabindex="0">
+                <span class="checkbox ${checked ? "checked" : ""}"></span>
+                <div class="session-card-body">${inner}</div>
+              </div>
+            `;
+          }
+
+          return `
+            <button class="session-card ${selected}" data-action="select-session" data-session-id="${escapeHtml(session.id)}">
+              ${inner}
             </button>
           `;
         })
@@ -673,16 +718,89 @@
       const hasToolbar = Boolean(existingToolbar);
       const renderedProjectId = el.sessions.dataset.projectId || "";
       const currentProjectId = state.selectedProjectId || "";
+      const headerSignature = `${state.selectMode}|${state.sessions.length}|${hasBulkActions()}`;
+      const renderedHeaderSignature = el.sessions.dataset.headerSignature || "";
 
-      if (renderedProjectId === currentProjectId && hasToolbar === wantToolbar && existingBody && existingSubtitle && existingTitle) {
+      if (
+        renderedProjectId === currentProjectId &&
+        hasToolbar === wantToolbar &&
+        renderedHeaderSignature === headerSignature &&
+        existingBody &&
+        existingSubtitle &&
+        existingTitle
+      ) {
         existingTitle.textContent = projectName;
         existingSubtitle.textContent = subtitleText;
         existingBody.innerHTML = buildSessionsBodyHtml();
+        renderBulkBar();
         return;
       }
 
       el.sessions.innerHTML = `${buildSessionsHeaderHtml(projectName, subtitleText)}<div class="panel-body">${buildSessionsBodyHtml()}</div>`;
       el.sessions.dataset.projectId = currentProjectId;
+      el.sessions.dataset.headerSignature = headerSignature;
+      renderBulkBar();
+    }
+
+    function renderBulkBar() {
+      if (!el.bulkBar) return;
+      const count = state.selectedProjectIds.size + state.selectedSessionIds.size;
+      if (!state.selectMode || count === 0) {
+        el.bulkBar.hidden = true;
+        el.bulkBar.innerHTML = "";
+        return;
+      }
+
+      const buttons = (window.OCV?.listBulkActions?.() ?? [])
+        .map(
+          (action) =>
+            `<button class="bulk-btn ${action.danger ? "danger" : ""}" data-action="bulk-run" data-bulk-id="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
+        )
+        .join("");
+
+      el.bulkBar.hidden = false;
+      el.bulkBar.innerHTML = `
+        <span class="bulk-count">${count} selected</span>
+        ${buttons}
+        <button class="bulk-btn ghost" data-action="bulk-clear">Clear</button>
+      `;
+    }
+
+    function renderPluginsDialog() {
+      if (!el.modal) return;
+      if (!state.pluginsOpen) {
+        el.modal.innerHTML = "";
+        return;
+      }
+
+      const plugins = window.OCV?.list?.() ?? [];
+      const rows = plugins.length
+        ? plugins
+            .map(
+              (plugin) => `
+                <label class="plugin-row">
+                  <input type="checkbox" data-action="toggle-plugin" data-plugin-id="${escapeHtml(plugin.id)}" ${plugin.enabled ? "checked" : ""} />
+                  <span class="plugin-info">
+                    <span class="plugin-name">${escapeHtml(plugin.name)}</span>
+                    ${plugin.description ? `<span class="plugin-desc">${escapeHtml(plugin.description)}</span>` : ""}
+                  </span>
+                </label>
+              `
+            )
+            .join("")
+        : `<div class="state">No plugins found in public/plugins/.</div>`;
+
+      el.modal.innerHTML = `
+        <div class="modal-overlay">
+          <div class="modal" role="dialog" aria-label="Plugins">
+            <div class="modal-header">
+              <h3>Plugins</h3>
+              <button class="header-btn" data-action="close-plugins">Close</button>
+            </div>
+            <div class="modal-body">${rows}</div>
+          </div>
+        </div>
+      `;
     }
 
     function renderToolResultPart(output) {
@@ -1423,6 +1541,77 @@
         return;
       }
 
+      if (action === "toggle-select-mode") {
+        state.selectMode = !state.selectMode;
+        if (!state.selectMode) {
+          state.selectedProjectIds.clear();
+          state.selectedSessionIds.clear();
+        }
+        renderProjectsPanel();
+        renderSessionsPanel();
+        renderBulkBar();
+        return;
+      }
+
+      if (action === "toggle-project-select") {
+        const projectId = target.dataset.projectId;
+        if (!projectId) return;
+        if (state.selectedProjectIds.has(projectId)) state.selectedProjectIds.delete(projectId);
+        else state.selectedProjectIds.add(projectId);
+        renderProjectsPanel();
+        renderBulkBar();
+        return;
+      }
+
+      if (action === "toggle-session-select") {
+        const sessionId = target.dataset.sessionId;
+        if (!sessionId) return;
+        if (state.selectedSessionIds.has(sessionId)) state.selectedSessionIds.delete(sessionId);
+        else state.selectedSessionIds.add(sessionId);
+        renderSessionsPanel();
+        renderBulkBar();
+        return;
+      }
+
+      if (action === "bulk-clear") {
+        state.selectedProjectIds.clear();
+        state.selectedSessionIds.clear();
+        renderProjectsPanel();
+        renderSessionsPanel();
+        renderBulkBar();
+        return;
+      }
+
+      if (action === "bulk-run") {
+        const actionDef = (window.OCV?.listBulkActions?.() ?? []).find((item) => item.id === target.dataset.bulkId);
+        if (!actionDef) return;
+        try {
+          await actionDef.handler({
+            projectIds: [...state.selectedProjectIds],
+            sessionIds: [...state.selectedSessionIds],
+            host: window.OCV?.host
+          });
+        } catch (error) {
+          console.error("Bulk action failed:", error);
+          alert(`Action failed: ${error instanceof Error ? error.message : String(error)}`);
+        }
+        return;
+      }
+
+      if (action === "toggle-plugins") {
+        state.pluginsOpen = !state.pluginsOpen;
+        renderPluginsDialog();
+        renderProjectsPanel();
+        return;
+      }
+
+      if (action === "close-plugins") {
+        state.pluginsOpen = false;
+        renderPluginsDialog();
+        renderProjectsPanel();
+        return;
+      }
+
       if (action === "scroll-message") {
         const messageId = target.dataset.messageId;
         if (!messageId) return;
@@ -1463,7 +1652,14 @@
 
     document.addEventListener("change", (event) => {
       const target = event.target;
-      if (!target || target.dataset?.action !== "scope-sessions") return;
+      if (!target) return;
+
+      if (target.dataset?.action === "toggle-plugin") {
+        window.OCV?.setEnabled?.(target.dataset.pluginId, target.checked);
+        return;
+      }
+
+      if (target.dataset?.action !== "scope-sessions") return;
 
       const value = target.value;
       state.sessionsScope = value === "user" || value === "assistant" ? value : "all";
@@ -1491,9 +1687,22 @@
         return;
       }
 
+      if (event.target.classList?.contains("modal-overlay")) {
+        state.pluginsOpen = false;
+        renderPluginsDialog();
+        renderProjectsPanel();
+        return;
+      }
+
       const target = event.target.closest("[data-action]");
       if (!target) return;
-      if (target.dataset.action === "search-sessions" || target.dataset.action === "scope-sessions") return;
+      if (
+        target.dataset.action === "search-sessions" ||
+        target.dataset.action === "scope-sessions" ||
+        target.dataset.action === "toggle-plugin"
+      ) {
+        return;
+      }
       event.preventDefault();
       void onAction(target.dataset.action, target);
     });
@@ -1545,13 +1754,85 @@
       renderProjectsPanel();
       renderSessionsPanel();
       renderMessagesPanel();
+      renderBulkBar();
+      renderPluginsDialog();
+    }
+
+    if (window.OCV?.host) {
+      Object.assign(window.OCV.host, {
+        getProjects: () => state.projects.map((project) => ({ id: project.id, name: project.name, worktree: project.worktree })),
+        getSessions: () => state.sessions.map((session) => ({ id: session.id, title: session.title, projectId: session.projectId })),
+        getSelection: () => ({
+          projectIds: [...state.selectedProjectIds],
+          sessionIds: [...state.selectedSessionIds]
+        }),
+        clearSelection: () => {
+          state.selectedProjectIds.clear();
+          state.selectedSessionIds.clear();
+          renderProjectsPanel();
+          renderSessionsPanel();
+          renderBulkBar();
+        },
+        download: (filename, content, mime) => downloadBlob(content, filename, mime),
+        createZip: (entries) => window.OCV.helpers.createZip(entries),
+        notify: (message) => console.log("[OCV]", message),
+        refresh: () => {
+          loadProjects();
+          if (state.selectedProjectId) loadSessions({ reset: true });
+        },
+        render: () => {
+          renderProjectsPanel();
+          renderSessionsPanel();
+          renderMessagesPanel();
+          renderBulkBar();
+        },
+        onPluginsChanged: () => {
+          if (!hasBulkActions()) {
+            state.selectMode = false;
+            state.selectedProjectIds.clear();
+            state.selectedSessionIds.clear();
+          }
+          renderProjectsPanel();
+          renderSessionsPanel();
+          renderMessagesPanel();
+          renderBulkBar();
+          renderPluginsDialog();
+        },
+        api: {
+          getProjectSessions: async (projectId) => {
+            const sessions = [];
+            let page = 1;
+            const limit = 200;
+            while (true) {
+              const payload = await fetchJson(`/api/projects/${encodeURIComponent(projectId)}/sessions?page=${page}&limit=${limit}`);
+              const items = Array.isArray(payload?.sessions) ? payload.sessions : [];
+              sessions.push(...items);
+              const total = Number(payload?.total);
+              if (!Number.isFinite(total) || sessions.length >= total || items.length === 0 || page > 100) break;
+              page += 1;
+            }
+            return sessions;
+          },
+          getSessionDetail: (sessionId) => fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}`),
+          deleteProject: async (id) => {
+            const response = await fetch(`/api/projects/${encodeURIComponent(id)}`, { method: "DELETE" });
+            if (!response.ok) throw new Error(`Delete project failed (HTTP ${response.status})`);
+            return response.json();
+          },
+          deleteSession: async (id) => {
+            const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
+            if (!response.ok) throw new Error(`Delete session failed (HTTP ${response.status})`);
+            return response.json();
+          }
+        }
+      });
     }
 
     async function loadPlugins() {
       try {
         const payload = await fetchJson("/api/plugins");
-        const plugins = Array.isArray(payload?.plugins) ? payload.plugins : [];
-        for (const file of plugins) {
+        const files = Array.isArray(payload?.plugins) ? payload.plugins : [];
+        for (const file of files) {
           await new Promise((resolve) => {
             const script = document.createElement("script");
             script.src = `/plugins/${encodeURIComponent(file)}`;
@@ -1560,6 +1841,8 @@
             document.head.appendChild(script);
           });
         }
+        window.OCV?._activateAll?.();
+        window.OCV?._markReady?.();
       } catch (error) {
         console.warn("Failed to load plugins:", error);
       }
