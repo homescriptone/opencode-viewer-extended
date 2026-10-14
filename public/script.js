@@ -28,7 +28,8 @@
       selectedSessionIds: new Set(),
       pluginsOpen: false,
       writeEnabled: false,
-      editMode: false
+      editMode: false,
+      status: null
     };
 
     const el = {
@@ -36,6 +37,7 @@
       sessions: document.getElementById("sessions-panel"),
       messages: document.getElementById("messages-panel"),
       bulkBar: document.getElementById("bulk-bar"),
+      statusToast: document.getElementById("status-toast"),
       modal: document.getElementById("modal-root")
     };
 
@@ -745,15 +747,44 @@
       renderBulkBar();
     }
 
+    function renderStatus() {
+      if (!el.statusToast) return;
+      const status = state.status;
+      if (!status || (!status.label && status.current === undefined)) {
+        el.statusToast.hidden = true;
+        el.statusToast.innerHTML = "";
+        return;
+      }
+
+      const { label = "", current, total } = status;
+      let progressHtml = "";
+      if (typeof current === "number" && typeof total === "number" && total > 0) {
+        const pct = Math.max(0, Math.min(100, Math.round((current / total) * 100)));
+        progressHtml = `
+          <div class="status-progress"><div class="status-progress-fill" style="width:${pct}%"></div></div>
+          <div class="status-count">${current} / ${total}</div>
+        `;
+      }
+
+      el.statusToast.hidden = false;
+      el.statusToast.innerHTML = `
+        <span class="status-spinner" aria-hidden="true"></span>
+        <div class="status-body">
+          <div class="status-label">${escapeHtml(label || "Working…")}</div>
+          ${progressHtml}
+        </div>
+      `;
+    }
+
     function renderBulkBar() {
       if (!el.bulkBar) return;
-      const count = state.selectedProjectIds.size + state.selectedSessionIds.size;
-      if (!state.selectMode || count === 0) {
+      if (!state.selectMode) {
         el.bulkBar.hidden = true;
         el.bulkBar.innerHTML = "";
         return;
       }
 
+      const count = state.selectedProjectIds.size + state.selectedSessionIds.size;
       const buttons = (window.OCV?.listBulkActions?.() ?? [])
         .filter((action) => !action.write || (state.writeEnabled && state.editMode))
         .map(
@@ -765,8 +796,9 @@
       el.bulkBar.hidden = false;
       el.bulkBar.innerHTML = `
         <span class="bulk-count">${count} selected</span>
-        ${buttons}
-        <button class="bulk-btn ghost" data-action="bulk-clear">Clear</button>
+        <button class="bulk-btn" data-action="bulk-select-all">Select all</button>
+        <button class="bulk-btn ghost" data-action="bulk-clear"${count === 0 ? " disabled" : ""}>Clear</button>
+        ${count > 0 ? buttons : ""}
       `;
     }
 
@@ -1114,7 +1146,12 @@
         )
         .join("");
 
-      return `<div class="header-actions">${pluginActions}${exportMenu}</div>`;
+      const editActions =
+        state.writeEnabled && state.editMode
+          ? `<button class="header-btn danger" data-action="delete-session">Delete</button>`
+          : "";
+
+      return `<div class="header-actions">${editActions}${pluginActions}${exportMenu}</div>`;
     }
 
     function renderMessagesPanel() {
@@ -1545,10 +1582,31 @@
         return;
       }
 
+      if (action === "delete-session") {
+        const sessionId = state.selectedSessionId;
+        if (!sessionId) return;
+        const title = state.sessionData?.title || getSelectedSession()?.title || sessionId;
+        const ok = window.confirm(`Delete session "${title}"? This cannot be undone.`);
+        if (!ok) return;
+        try {
+          window.OCV?.host?.setStatus?.("Deleting session…");
+          await window.OCV.host.api.deleteSession(sessionId);
+          clearSelectedSession();
+          await loadSessions({ reset: true });
+        } catch (error) {
+          console.error("Delete session failed:", error);
+          alert(`Delete failed: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          window.OCV?.host?.clearStatus?.();
+        }
+        return;
+      }
+
       if (action === "toggle-edit-mode") {
         state.editMode = !state.editMode;
         renderProjectsPanel();
         renderSessionsPanel();
+        renderMessagesPanel();
         renderBulkBar();
         return;
       }
@@ -1580,6 +1638,15 @@
         if (!sessionId) return;
         if (state.selectedSessionIds.has(sessionId)) state.selectedSessionIds.delete(sessionId);
         else state.selectedSessionIds.add(sessionId);
+        renderSessionsPanel();
+        renderBulkBar();
+        return;
+      }
+
+      if (action === "bulk-select-all") {
+        for (const project of state.projects) state.selectedProjectIds.add(project.id);
+        for (const session of state.sessions) state.selectedSessionIds.add(session.id);
+        renderProjectsPanel();
         renderSessionsPanel();
         renderBulkBar();
         return;
@@ -1768,6 +1835,7 @@
       renderMessagesPanel();
       renderBulkBar();
       renderPluginsDialog();
+      renderStatus();
     }
 
     if (window.OCV?.host) {
@@ -1788,6 +1856,18 @@
         download: (filename, content, mime) => downloadBlob(content, filename, mime),
         createZip: (entries) => window.OCV.helpers.createZip(entries),
         notify: (message) => console.log("[OCV]", message),
+        setStatus: (label) => {
+          state.status = { label };
+          renderStatus();
+        },
+        setProgress: (current, total, label) => {
+          state.status = { label, current, total };
+          renderStatus();
+        },
+        clearStatus: () => {
+          state.status = null;
+          renderStatus();
+        },
         refresh: () => {
           loadProjects();
           if (state.selectedProjectId) loadSessions({ reset: true });

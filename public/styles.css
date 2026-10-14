@@ -995,6 +995,16 @@
       color: var(--accent-ink);
     }
 
+    .header-btn.danger {
+      color: #b23b3b;
+      border-color: #e4bcbc;
+    }
+
+    .header-btn.danger:hover {
+      background: #fbeaea;
+      border-color: #d99a9a;
+    }
+
     .project-row.selectable,
     .session-card.selectable {
       display: flex;
@@ -1095,6 +1105,69 @@
 
     .bulk-btn.ghost {
       color: var(--muted);
+    }
+
+    .status-toast {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 450;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 220px;
+      max-width: 340px;
+      padding: 12px 14px;
+      background: var(--surface);
+      border: 1px solid var(--hair-2);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(20, 20, 20, 0.16);
+    }
+
+    .status-spinner {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--hair-2);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: status-spin 0.7s linear infinite;
+    }
+
+    @keyframes status-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .status-body {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .status-label {
+      font-size: 12.5px;
+      color: var(--ink);
+    }
+
+    .status-progress {
+      margin-top: 8px;
+      height: 6px;
+      border-radius: 999px;
+      background: var(--hair);
+      overflow: hidden;
+    }
+
+    .status-progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 999px;
+      transition: width 0.2s ease;
+    }
+
+    .status-count {
+      margin-top: 4px;
+      font-size: 11px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
     }
 
     .modal-overlay {

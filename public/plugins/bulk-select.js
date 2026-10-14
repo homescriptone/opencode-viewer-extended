@@ -26,55 +26,73 @@ OCV.define({
         const seenSessions = new Set();
         const projectsById = new Map(host.getProjects().map((project) => [project.id, project]));
 
-        // Write one folder of json/xml/html for a { session, messages } payload.
-        const addSession = async (sessionId, folder) => {
-          if (seenSessions.has(sessionId)) return;
-          seenSessions.add(sessionId);
+        try {
+          host.setStatus("Preparing export…");
 
-          const detail = await host.api.getSessionDetail(sessionId);
-          const title = detail?.session?.title || sessionId;
-          entries.push({ name: `${folder}/session.json`, data: JSON.stringify(detail, null, 2) });
-          entries.push({ name: `${folder}/session.xml`, data: toXmlDocument("export", detail) });
-          entries.push({ name: `${folder}/session.html`, data: toHtmlDocument(title, detail) });
-        };
+          const tasks = [];
+          for (const projectId of projectIds) {
+            const project = projectsById.get(projectId) || { id: projectId };
+            const folderName = sanitize(`${project.name || projectId}-${projectId}`);
+            const base = `projects/${folderName}`;
 
-        for (const projectId of projectIds) {
-          const project = projectsById.get(projectId) || { id: projectId };
-          const folderName = sanitize(`${project.name || projectId}-${projectId}`);
-          const base = `projects/${folderName}`;
+            entries.push({ name: `${base}/project.json`, data: JSON.stringify(project, null, 2) });
+            entries.push({ name: `${base}/project.xml`, data: toXmlDocument("project", project) });
+            entries.push({ name: `${base}/project.html`, data: toProjectHtml(project) });
 
-          entries.push({ name: `${base}/project.json`, data: JSON.stringify(project, null, 2) });
-          entries.push({ name: `${base}/project.xml`, data: toXmlDocument("project", project) });
-          entries.push({ name: `${base}/project.html`, data: toProjectHtml(project) });
-
-          const sessions = await host.api.getProjectSessions(projectId);
-          for (const session of sessions) {
-            await addSession(session.id, `${base}/sessions/${sanitize(session.id)}`);
+            const sessions = await host.api.getProjectSessions(projectId);
+            for (const session of sessions) {
+              if (seenSessions.has(session.id)) continue;
+              seenSessions.add(session.id);
+              tasks.push({ sessionId: session.id, folder: `${base}/sessions/${sanitize(session.id)}` });
+            }
           }
+
+          for (const sessionId of sessionIds) {
+            if (seenSessions.has(sessionId)) continue;
+            seenSessions.add(sessionId);
+            tasks.push({ sessionId, folder: `sessions/${sanitize(sessionId)}` });
+          }
+
+          const total = tasks.length;
+          let done = 0;
+          if (total === 0) {
+            host.setStatus("Building archive…");
+          } else {
+            host.setProgress(0, total, "Collecting sessions…");
+          }
+
+          for (const task of tasks) {
+            const detail = await host.api.getSessionDetail(task.sessionId);
+            const title = detail?.session?.title || task.sessionId;
+            entries.push({ name: `${task.folder}/session.json`, data: JSON.stringify(detail, null, 2) });
+            entries.push({ name: `${task.folder}/session.xml`, data: toXmlDocument("export", detail) });
+            entries.push({ name: `${task.folder}/session.html`, data: toHtmlDocument(title, detail) });
+            done += 1;
+            host.setProgress(done, total, "Collecting sessions…");
+          }
+
+          host.setStatus("Building archive…");
+          entries.push({
+            name: "manifest.json",
+            data: JSON.stringify(
+              {
+                exportedAt: new Date().toISOString(),
+                formats: ["json", "xml", "html"],
+                projectIds,
+                sessionIds,
+                files: entries.length + 1
+              },
+              null,
+              2
+            )
+          });
+
+          const blob = host.createZip(entries);
+          host.download(`ocv-export-${Date.now()}.zip`, blob, "application/zip");
+          host.notify(`Exported ${entries.length} files (json/xml/html).`);
+        } finally {
+          host.clearStatus();
         }
-
-        for (const sessionId of sessionIds) {
-          await addSession(sessionId, `sessions/${sanitize(sessionId)}`);
-        }
-
-        entries.push({
-          name: "manifest.json",
-          data: JSON.stringify(
-            {
-              exportedAt: new Date().toISOString(),
-              formats: ["json", "xml", "html"],
-              projectIds,
-              sessionIds,
-              files: entries.length + 1
-            },
-            null,
-            2
-          )
-        });
-
-        const blob = host.createZip(entries);
-        host.download(`ocv-export-${Date.now()}.zip`, blob, "application/zip");
-        host.notify(`Exported ${entries.length} files (json/xml/html).`);
       }
     });
 
@@ -92,14 +110,22 @@ OCV.define({
         const ok = window.confirm(`Delete ${parts.join(" and ")}? This cannot be undone.`);
         if (!ok) return;
 
+        const total = projectIds.length + sessionIds.length;
         let deleted = 0;
-        for (const projectId of projectIds) {
-          await host.api.deleteProject(projectId);
-          deleted += 1;
-        }
-        for (const sessionId of sessionIds) {
-          await host.api.deleteSession(sessionId);
-          deleted += 1;
+        try {
+          host.setProgress(0, total, "Deleting…");
+          for (const projectId of projectIds) {
+            await host.api.deleteProject(projectId);
+            deleted += 1;
+            host.setProgress(deleted, total, "Deleting…");
+          }
+          for (const sessionId of sessionIds) {
+            await host.api.deleteSession(sessionId);
+            deleted += 1;
+            host.setProgress(deleted, total, "Deleting…");
+          }
+        } finally {
+          host.clearStatus();
         }
 
         host.clearSelection();
