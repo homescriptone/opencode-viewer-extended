@@ -52,7 +52,7 @@ process.env.OCV_PORT = String(port);
 process.env.OCV_DB_PATH = dbPath;
 
 // Import and start server
-const serverPath = join(import.meta.dir, "..", "server.ts");
+const serverPath = join(import.meta.dir, "..", "server", "launch.ts");
 await import(serverPath);
 
 // Auto-open browser
