@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://homescriptone.github.io/opencode-viewer-extended/sitemap.xml

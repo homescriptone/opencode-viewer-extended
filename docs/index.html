@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>opencode-viewer-extender — Browse, edit & export OpenCode sessions locally</title>
+  <meta name="description" content="A local web GUI to browse, edit, and export your OpenCode AI coding sessions from the SQLite database, with a plugin API. Runs on Bun." />
+  <meta name="keywords" content="opencode, opencode viewer, sqlite, ai sessions, bun, cli, plugin, export" />
+  <link rel="canonical" href="https://homescriptone.github.io/opencode-viewer-extended/" />
+  <meta name="theme-color" content="#fbfaf7" />
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+
+  <meta property="og:type" content="website" />
+  <meta property="og:title" content="opencode-viewer-extender" />
+  <meta property="og:description" content="Browse, edit, and export your OpenCode sessions locally — with a plugin API." />
+  <meta property="og:url" content="https://homescriptone.github.io/opencode-viewer-extended/" />
+  <meta property="og:image" content="https://homescriptone.github.io/opencode-viewer-extended/og.svg" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="opencode-viewer-extender" />
+  <meta name="twitter:description" content="Browse, edit, and export your OpenCode sessions locally — with a plugin API." />
+  <meta name="twitter:image" content="https://homescriptone.github.io/opencode-viewer-extended/og.svg" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "opencode-viewer-extender",
+    "applicationCategory": "DeveloperApplication",
+    "operatingSystem": "macOS, Linux, Windows",
+    "description": "Local GUI to browse, edit, and export OpenCode AI coding sessions from the SQLite database, with a plugin API.",
+    "url": "https://homescriptone.github.io/opencode-viewer-extended/",
+    "softwareVersion": "1.1.0",
+    "license": "https://opensource.org/licenses/MIT",
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+    "codeRepository": "https://github.com/homescriptone/opencode-viewer-extended"
+  }
+  </script>
+</head>
+<body>
+  <header class="hero">
+    <div class="wrap">
+      <p class="eyebrow">OpenCode · local · open source</p>
+      <h1>opencode-viewer-extender</h1>
+      <p class="lede">
+        A local web GUI to <strong>browse</strong>, <strong>edit</strong>, and <strong>export</strong>
+        your OpenCode sessions, messages, and tool calls from the SQLite database — with a small
+        <strong>plugin API</strong> you can extend. Everything stays on your machine.
+      </p>
+      <div class="cta">
+        <a class="btn primary" href="https://github.com/homescriptone/opencode-viewer-extended">GitHub</a>
+        <a class="btn" href="https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender">npm</a>
+        <a class="btn" href="https://github.com/homescriptone/opencode-viewer-extended/releases">Desktop downloads</a>
+      </div>
+      <pre class="install"><code>bunx @homescriptone/opencode-viewer-extender</code></pre>
+    </div>
+  </header>
+
+  <main>
+    <section class="wrap">
+      <h2>What you get</h2>
+      <ul class="features">
+        <li><h3>Three-panel browsing</h3><p>Projects, sessions, and the full message thread with pagination and cross-project search.</p></li>
+        <li><h3>Rich tool calls</h3><p>Inputs, outputs, patches, file attachments, inline images, reasoning blocks, subagent drill-down, and cost/token summaries.</p></li>
+        <li><h3>Export</h3><p>Any session as Markdown or JSON, or select many projects/sessions and download a single <code>.zip</code>.</p></li>
+        <li><h3>Edit mode</h3><p>Opt-in create/update/delete for projects, sessions, messages, and parts. Read-only by default.</p></li>
+        <li><h3>Plugin API</h3><p>Drop a <code>.js</code> file in <code>public/plugins/</code> to add part renderers, export formats, session actions, and bulk actions. Toggle them from the UI.</p></li>
+        <li><h3>No build step</h3><p>Vanilla frontend, Bun server, one dependency-free package.</p></li>
+      </ul>
+    </section>
+
+    <section class="wrap">
+      <h2>Install</h2>
+      <p>Requires <a href="https://bun.sh">Bun</a> and OpenCode used at least once.</p>
+      <pre><code># run it (auto-opens the browser)
+bunx @homescriptone/opencode-viewer-extender
+
+# enable edit mode
+bunx @homescriptone/opencode-viewer-extender --write
+
+# custom port / database
+bunx @homescriptone/opencode-viewer-extender -p 8080 --db /path/to/opencode.db</code></pre>
+      <p class="note">Desktop installers (<code>.dmg</code>, Linux, Windows) are published on the
+        <a href="https://github.com/homescriptone/opencode-viewer-extended/releases">releases page</a>.</p>
+    </section>
+
+    <section class="wrap">
+      <h2>Write a plugin</h2>
+      <p>Plugins register features through a tiny API and are auto-discovered from <code>public/plugins/</code>.</p>
+      <pre><code>OCV.define({
+  id: "my-plugin",
+  name: "My plugin",
+  setup(api) {
+    api.registerExportFormat({
+      id: "txt", label: "Plain text (.txt)",
+      extension: "txt", mime: "text/plain",
+      build: ({ session, messages }) => "..."
+    });
+    api.registerBulkAction({
+      id: "wipe", label: "Delete selected",
+      danger: true, write: true,
+      handler: async ({ projectIds, host }) => {}
+    });
+  }
+});</code></pre>
+    </section>
+
+    <section class="wrap warn">
+      <h2>Data &amp; safety</h2>
+      <p>
+        The database is opened <strong>read-only</strong> by default. Writes require <code>--write</code>.
+        Deletes <strong>cascade</strong> and cannot be undone — back up <code>opencode.db</code> first.
+        Nothing leaves your machine.
+      </p>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p>
+      <a href="https://github.com/homescriptone/opencode-viewer-extended">GitHub</a> ·
+      <a href="https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender">npm</a> ·
+      <a href="https://github.com/homescriptone/opencode-viewer-extended/releases">Releases</a> ·
+      MIT licensed
+    </p>
+  </footer>
+</body>
+</html>

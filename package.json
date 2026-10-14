@@ -1,7 +1,7 @@
 {
   "name": "@homescriptone/opencode-viewer-extender",
-  "version": "1.0.5",
-  "description": "Local GUI to browse your OpenCode sessions, messages, and tool calls from the SQLite database",
+  "version": "1.1.0",
+  "description": "Local GUI to browse, edit, and export your OpenCode sessions, messages, and tool calls from the SQLite database, with a plugin API",
   "bin": {
     "opencode-viewer": "bin/cli.js"
   },
@@ -13,22 +13,30 @@
   "scripts": {
     "dev": "bun run --watch server/launch.ts",
     "start": "bun run server/launch.ts",
+    "typecheck": "bun check",
+    "prepublishOnly": "bun check",
     "deploy": "npm version patch --no-git-tag-version && git add -A && git commit -m \"v$(node -p require('./package.json').version)\" && git push && npm publish --access public"
   },
   "keywords": [
     "opencode",
+    "opencode-viewer",
     "viewer",
     "sqlite",
     "sessions",
     "ai",
     "cli",
-    "tui"
+    "bun",
+    "plugins"
   ],
   "author": "homescriptone",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/homescriptone/opencode-viewer-extender.git"
+    "url": "git+https://github.com/homescriptone/opencode-viewer-extended.git"
+  },
+  "homepage": "https://homescriptone.github.io/opencode-viewer-extended/",
+  "bugs": {
+    "url": "https://github.com/homescriptone/opencode-viewer-extended/issues"
   },
   "engines": {
     "bun": ">=1.0.0"
@@ -37,9 +45,7 @@
     "access": "public"
   },
   "devDependencies": {
+    "@types/bun": "^1.4.3",
     "@types/node": "^26.6.5"
-  },
-  "dependencies": {
-    "@types/bun": "^1.4.3"
   }
 }
