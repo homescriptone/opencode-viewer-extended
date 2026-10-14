@@ -10,6 +10,8 @@ const DB_PATH =
   join(homedir(), ".local", "share", "opencode", "opencode.db");
 export const PUBLIC_DIR = join(import.meta.dir, "..", "public");
 
+export const WRITE_ENABLED = process.env.OCV_WRITE === "1";
+
 if (!existsSync(DB_PATH)) {
   console.error(`OpenCode database not found at: ${DB_PATH}`);
   process.exit(1);
@@ -18,16 +20,21 @@ if (!existsSync(DB_PATH)) {
 let db: Database;
 
 try {
-  db = new Database(DB_PATH);
+  db = WRITE_ENABLED ? new Database(DB_PATH) : new Database(DB_PATH, { readonly: true });
 } catch (error) {
   console.error("Failed to open OpenCode database:", error);
   process.exit(1);
 }
 
-try {
-  db.exec("PRAGMA foreign_keys = ON");
-} catch {
-  /* foreign keys already enabled or unsupported; cascades still defined in schema */
+if (WRITE_ENABLED) {
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+  } catch {
+    /* foreign keys already enabled or unsupported; cascades still defined in schema */
+  }
+  console.warn(
+    "Write mode ENABLED (OCV_WRITE=1): create/update/delete operations are available.",
+  );
 }
 
 export type JsonObject = Record<string, unknown>;

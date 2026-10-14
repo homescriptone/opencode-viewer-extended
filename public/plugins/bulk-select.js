@@ -58,6 +58,7 @@ OCV.define({
       id: "bulk-delete",
       label: "Delete selected",
       danger: true,
+      write: true,
       async handler({ projectIds, sessionIds, host }) {
         const parts = [];
         if (projectIds.length) parts.push(`${projectIds.length} project(s) (and all their sessions)`);

@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 
 import {
   PORT,
+  WRITE_ENABLED,
   corsHeaders,
   json,
   notFound,
@@ -261,6 +262,10 @@ async function handleWrite(req: Request, url: URL): Promise<Response> {
   const method = req.method.toUpperCase();
   const now = Date.now();
 
+  if (!WRITE_ENABLED) {
+    return json({ error: "Edit mode disabled. Start with --write (or OCV_WRITE=1)." }, 403);
+  }
+
   if (method === "POST") {
     const body = await readJsonBody(req);
     if (!body) return badRequest("Invalid JSON body");
@@ -404,6 +409,10 @@ const server = Bun.serve({
       if (pathname === "/api/projects") {
         const projects = projectStmt.all();
         return json({ projects });
+      }
+
+      if (pathname === "/api/config") {
+        return json({ write: WRITE_ENABLED });
       }
 
       if (pathname === "/api/plugins") {

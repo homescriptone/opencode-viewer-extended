@@ -26,7 +26,9 @@
       selectMode: false,
       selectedProjectIds: new Set(),
       selectedSessionIds: new Set(),
-      pluginsOpen: false
+      pluginsOpen: false,
+      writeEnabled: false,
+      editMode: false
     };
 
     const el = {
@@ -535,6 +537,7 @@
             <div class="panel-subtitle">${state.projects.length} total</div>
           </div>
           <div class="header-actions">
+            ${state.writeEnabled ? `<button class="header-btn ${state.editMode ? "active" : ""}" data-action="toggle-edit-mode">${state.editMode ? "Editing" : "Edit"}</button>` : ""}
             ${hasBulkActions() ? `<button class="header-btn ${state.selectMode ? "active" : ""}" data-action="toggle-select-mode">${state.selectMode ? "Done" : "Select"}</button>` : ""}
             <button class="header-btn ${state.pluginsOpen ? "active" : ""}" data-action="toggle-plugins">Plugins${plugins.length ? ` (${plugins.length})` : ""}</button>
           </div>
@@ -752,6 +755,7 @@
       }
 
       const buttons = (window.OCV?.listBulkActions?.() ?? [])
+        .filter((action) => !action.write || (state.writeEnabled && state.editMode))
         .map(
           (action) =>
             `<button class="bulk-btn ${action.danger ? "danger" : ""}" data-action="bulk-run" data-bulk-id="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
@@ -1541,6 +1545,14 @@
         return;
       }
 
+      if (action === "toggle-edit-mode") {
+        state.editMode = !state.editMode;
+        renderProjectsPanel();
+        renderSessionsPanel();
+        renderBulkBar();
+        return;
+      }
+
       if (action === "toggle-select-mode") {
         state.selectMode = !state.selectMode;
         if (!state.selectMode) {
@@ -1848,7 +1860,17 @@
       }
     }
 
+    async function loadConfig() {
+      try {
+        const config = await fetchJson("/api/config");
+        state.writeEnabled = Boolean(config?.write);
+      } catch (error) {
+        state.writeEnabled = false;
+      }
+    }
+
     (async () => {
+      await loadConfig();
       await loadPlugins();
       initialRender();
       loadProjects();

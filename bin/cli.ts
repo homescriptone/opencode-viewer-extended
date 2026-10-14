@@ -9,6 +9,7 @@ const { values } = parseArgs({
   options: {
     port: { type: "string", short: "p", default: "3456" },
     "no-open": { type: "boolean", default: false },
+    write: { type: "boolean", default: false },
     help: { type: "boolean", short: "h", default: false },
     db: { type: "string" },
   },
@@ -25,6 +26,7 @@ if (values.help) {
   Options:
     -p, --port <port>   Port to listen on (default: 3456)
     --db <path>         Custom path to opencode.db
+    --write             Enable edit mode (create/update/delete). Off by default.
     --no-open           Don't auto-open browser
     -h, --help          Show this help
 
@@ -50,6 +52,7 @@ if (!existsSync(dbPath)) {
 // Set env vars for the server to pick up
 process.env.OCV_PORT = String(port);
 process.env.OCV_DB_PATH = dbPath;
+if (values.write) process.env.OCV_WRITE = "1";
 
 // Import and start server
 const serverPath = join(import.meta.dir, "..", "server", "launch.ts");
