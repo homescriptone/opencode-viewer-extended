@@ -2,8 +2,3 @@ node_modules/
 .opencode/
 *.log
 .DS_Store
-
-# Tauri
-src-tauri/target/
-src-tauri/binaries/
-src-tauri/gen/
