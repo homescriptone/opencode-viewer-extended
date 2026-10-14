@@ -58,7 +58,14 @@ The database is opened **read-only** by default. Writes only become available wh
 ## Export
 
 - **Single session** — the **Export ▾** menu in the message header offers Markdown (`.md`) and JSON (`.json`), served by `GET /api/sessions/:id/export?format=md|json`.
-- **Bulk** — turn on **Select**, pick multiple projects/sessions, and choose **Export selected (.zip)**. The archive contains a `project.json` per project, each session as `sessions/<id>.json`, and a `manifest.json`.
+- **Bulk** — turn on **Select**, pick multiple projects/sessions, and choose **Export selected (.zip)**. The archive is grouped into folders, and every item is written in three formats (`.json`, `.xml`, `.html`):
+
+  ```
+  manifest.json
+  projects/<project>/project.{json,xml,html}
+  projects/<project>/sessions/<session>/session.{json,xml,html}
+  sessions/<session>/session.{json,xml,html}    # directly-selected sessions
+  ```
 
 ## Plugins
 
