@@ -785,6 +785,11 @@
       }
 
       const count = state.selectedProjectIds.size + state.selectedSessionIds.size;
+      const allProjectsSelected =
+        state.projects.length > 0 && state.projects.every((project) => state.selectedProjectIds.has(project.id));
+      const allSessionsSelected =
+        state.sessions.length > 0 && state.sessions.every((session) => state.selectedSessionIds.has(session.id));
+
       const buttons = (window.OCV?.listBulkActions?.() ?? [])
         .filter((action) => !action.write || (state.writeEnabled && state.editMode))
         .map(
@@ -796,7 +801,8 @@
       el.bulkBar.hidden = false;
       el.bulkBar.innerHTML = `
         <span class="bulk-count">${count} selected</span>
-        <button class="bulk-btn" data-action="bulk-select-all">Select all</button>
+        <button class="bulk-btn ${allProjectsSelected ? "active" : ""}" data-action="bulk-select-all-projects"${state.projects.length === 0 ? " disabled" : ""}>All projects</button>
+        <button class="bulk-btn ${allSessionsSelected ? "active" : ""}" data-action="bulk-select-all-sessions"${state.sessions.length === 0 ? " disabled" : ""}>All sessions</button>
         <button class="bulk-btn ghost" data-action="bulk-clear"${count === 0 ? " disabled" : ""}>Clear</button>
         ${count > 0 ? buttons : ""}
       `;
@@ -1643,10 +1649,27 @@
         return;
       }
 
-      if (action === "bulk-select-all") {
-        for (const project of state.projects) state.selectedProjectIds.add(project.id);
-        for (const session of state.sessions) state.selectedSessionIds.add(session.id);
+      if (action === "bulk-select-all-projects") {
+        const allSelected =
+          state.projects.length > 0 && state.projects.every((project) => state.selectedProjectIds.has(project.id));
+        if (allSelected) {
+          for (const project of state.projects) state.selectedProjectIds.delete(project.id);
+        } else {
+          for (const project of state.projects) state.selectedProjectIds.add(project.id);
+        }
         renderProjectsPanel();
+        renderBulkBar();
+        return;
+      }
+
+      if (action === "bulk-select-all-sessions") {
+        const allSelected =
+          state.sessions.length > 0 && state.sessions.every((session) => state.selectedSessionIds.has(session.id));
+        if (allSelected) {
+          for (const session of state.sessions) state.selectedSessionIds.delete(session.id);
+        } else {
+          for (const session of state.sessions) state.selectedSessionIds.add(session.id);
+        }
         renderSessionsPanel();
         renderBulkBar();
         return;

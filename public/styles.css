@@ -1093,6 +1093,22 @@
       background: var(--accent-wash);
     }
 
+    .bulk-btn.active {
+      border-color: var(--accent-hair);
+      background: var(--accent-wash);
+      color: var(--accent-ink);
+    }
+
+    .bulk-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .bulk-btn:disabled:hover {
+      background: none;
+      border-color: var(--hair);
+    }
+
     .bulk-btn.danger {
       color: #b23b3b;
       border-color: #e4bcbc;
