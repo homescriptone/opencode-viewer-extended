@@ -157,7 +157,15 @@ bun run typecheck
 
 ## Releasing
 
-Publishing to npm is automated: pushing to `main`/`master` runs [`.github/workflows/publish.yml`](.github/workflows/publish.yml), which type-checks and publishes the current `package.json` version (skipping if that version already exists). Add an `NPM_TOKEN` repository secret (an npm automation token) for it to publish. Bumping the version is all you need to ship a release.
+Publishing uses npm **trusted publishing (OIDC)** — no tokens or secrets. Push a version tag:
+
+```bash
+git tag v1.3.0 && git push origin v1.3.0
+```
+
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml) then type-checks and runs `npm publish` with provenance, and [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) builds the desktop installers and attaches them to the same release.
+
+One-time setup on [npmjs.com](https://www.npmjs.com): open the package → **Settings** → **Trusted Publisher** → **GitHub Actions**, and set the repository (`homescriptone/opencode-viewer-extended`) and workflow filename (`publish.yml`). No `NPM_TOKEN` secret is required.
 
 ## Desktop app
 

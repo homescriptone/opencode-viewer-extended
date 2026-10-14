@@ -17,10 +17,17 @@ OpenCode Session Viewer — a local web GUI for browsing and editing OpenCode AI
 bin/cli.ts            → CLI args, env setup, auto-open browser
 server/launch.ts      → Bun.serve HTTP server, routing, static files
 server/database.ts    → SQLite connection, prepared statements, shared helpers
+server/assets.ts      → frontend assets embedded as text (for compiled sidecar)
 public/index.html     → Page shell, loads styles.css + script.js
 public/script.js      → Single-page app logic (vanilla JS, no framework)
 public/styles.css     → Styles
 ```
+
+`server/assets.ts` text-imports the files under `public/` so they are baked into a
+`bun build --compile` binary. A compiled binary cannot read `public/` from disk
+(`import.meta.dir` is the virtual `/$bunfs/root`), so `serveStatic`/`listPlugins`
+fall back to the embedded copies when the on-disk path is absent. When adding a
+new file under `public/`, add a matching import + entry to `EMBEDDED_ASSETS`.
 
 The server opens the database **read-write** (foreign keys enabled, so deletes cascade) and exposes:
 
