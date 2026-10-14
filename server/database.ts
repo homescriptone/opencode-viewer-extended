@@ -1,7 +1,6 @@
-import { Database } from "bun:sqlite";
-import { Buffer } from "node:buffer";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { randomInt, randomUUID } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { extname, join, normalize } from "node:path";
 
@@ -9,7 +8,7 @@ export const PORT = Number(process.env.OCV_PORT) || randomInt(3000, 4500);
 const DB_PATH =
   process.env.OCV_DB_PATH ||
   join(homedir(), ".local", "share", "opencode", "opencode.db");
-const PUBLIC_DIR = join(import.meta.dir, "..", "public");
+export const PUBLIC_DIR = join(import.meta.dir, "..", "public");
 
 if (!existsSync(DB_PATH)) {
   console.error(`OpenCode database not found at: ${DB_PATH}`);
@@ -97,17 +96,17 @@ export const allowedPartTypes = new Set([
   "retry",
 ]);
 
-export const projectStmt = db.query<ProjectRow>(
+export const projectStmt = db.query<ProjectRow, SQLQueryBindings[]>(
   "SELECT id, worktree, name, icon_color, time_created, time_updated FROM project ORDER BY time_updated DESC",
 );
 
-export const sessionsCountNoQueryStmt = db.query<{ total: number }>(
+export const sessionsCountNoQueryStmt = db.query<{ total: number }, SQLQueryBindings[]>(
   `SELECT COUNT(*) as total
    FROM session
    WHERE project_id = ? AND parent_id IS NULL`,
 );
 
-export const projectSessionsNoQueryStmt = db.query<SessionRow>(
+export const projectSessionsNoQueryStmt = db.query<SessionRow, SQLQueryBindings[]>(
   `SELECT id, title, NULL as summary, directory, time_created, time_updated
    FROM session
    WHERE project_id = ? AND parent_id IS NULL
@@ -136,14 +135,14 @@ export function buildSearchStatements(scope: Scope) {
   `;
 
   return {
-    list: db.query<SessionRow>(
+    list: db.query<SessionRow, SQLQueryBindings[]>(
       `SELECT s.id, s.title, NULL as summary, s.directory, s.time_created, s.time_updated
        FROM session s
        ${commonWhere}
        ORDER BY s.time_updated DESC, s.id DESC
        LIMIT ? OFFSET ?`,
     ),
-    count: db.query<{ total: number }>(
+    count: db.query<{ total: number }, SQLQueryBindings[]>(
       `SELECT COUNT(*) as total
        FROM session s
        ${commonWhere}`,
@@ -177,7 +176,7 @@ export function buildGlobalSearchStatements(scope: Scope) {
   `;
 
   return {
-    list: db.query<SessionRow>(
+    list: db.query<SessionRow, SQLQueryBindings[]>(
       `SELECT s.id, s.project_id, project.name as project_name, project.worktree as project_worktree,
               s.title, NULL as summary, s.directory, s.time_created, s.time_updated
        FROM session s
@@ -186,7 +185,7 @@ export function buildGlobalSearchStatements(scope: Scope) {
        ORDER BY s.time_updated DESC, s.id DESC
        LIMIT ? OFFSET ?`,
     ),
-    count: db.query<{ total: number }>(
+    count: db.query<{ total: number }, SQLQueryBindings[]>(
       `SELECT COUNT(*) as total
        FROM session s
        ${commonWhere}`,
@@ -200,11 +199,11 @@ export const globalSearchStmts: Record<Scope, ReturnType<typeof buildGlobalSearc
   assistant: buildGlobalSearchStatements("assistant"),
 };
 
-export const sessionStmt = db.query<SessionDetailRow>(
+export const sessionStmt = db.query<SessionDetailRow, SQLQueryBindings[]>(
   "SELECT id, project_id, parent_id, title, NULL as summary, directory, time_created, time_updated FROM session WHERE id = ?",
 );
 
-export const sessionMessagesStmt = db.query<MessagePartJoinRow>(
+export const sessionMessagesStmt = db.query<MessagePartJoinRow, SQLQueryBindings[]>(
   `SELECT m.id, m.time_created, m.time_updated, m.data as message_data,
           p.id as part_id, p.data as part_data, p.time_created as part_time
    FROM message m
@@ -213,14 +212,22 @@ export const sessionMessagesStmt = db.query<MessagePartJoinRow>(
    ORDER BY m.time_created ASC, p.time_created ASC`,
 );
 
-export const subagentsStmt = db.query<SessionRow>(
+export const subagentsStmt = db.query<SessionRow, SQLQueryBindings[]>(
   `SELECT id, title, NULL as summary, NULL as directory, time_created, time_updated
    FROM session
    WHERE parent_id = ?
    ORDER BY time_created ASC`,
 );
 
-export const partImageStmt = db.query<{ data: string }>("SELECT data FROM part WHERE id = ?");
+export const partImageStmt = db.query<{ data: string }, SQLQueryBindings[]>("SELECT data FROM part WHERE id = ?");
+
+export function listPlugins(): string[] {
+  const pluginsDir = join(PUBLIC_DIR, "plugins");
+  if (!existsSync(pluginsDir)) return [];
+  return readdirSync(pluginsDir)
+    .filter((name) => name.endsWith(".js"))
+    .sort();
+}
 
 export function newId(prefix: string): string {
   return `${prefix}_${randomUUID().replace(/-/g, "")}`;

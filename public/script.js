@@ -21,7 +21,8 @@
       sessionData: null,
       messages: [],
       messageOutlineCollapsed: false,
-      sessionStack: []
+      sessionStack: [],
+      exportMenuOpen: false
     };
 
     const el = {
@@ -704,6 +705,16 @@
     function renderMessagePart(part) {
       const type = String(part?.type ?? "text").toLowerCase();
 
+      const pluginRenderer = window.OCV?.getPartRenderer?.(type);
+      if (pluginRenderer) {
+        try {
+          const html = pluginRenderer(part, { escapeHtml, toDisplayString, renderMarkdownLite });
+          if (html) return html;
+        } catch (error) {
+          console.error("OCV plugin part renderer failed:", error);
+        }
+      }
+
       if (type === "step-start" || type === "snapshot") {
         return "";
       }
@@ -949,6 +960,41 @@
       `;
     }
 
+    function buildHeaderActions() {
+      if (!state.selectedSessionId || state.sessionLoading || state.sessionError) return "";
+
+      const formats = [
+        { id: "md", label: "Markdown (.md)" },
+        { id: "json", label: "JSON (.json)" }
+      ];
+      for (const format of window.OCV?.listExportFormats?.() ?? []) {
+        formats.push({ id: format.id, label: format.label || format.id, plugin: true });
+      }
+
+      const formatButtons = formats
+        .map((format) => {
+          const pluginFlag = format.plugin ? ' data-plugin="true"' : "";
+          return `<button class="export-menu-item" data-action="export-session" data-format="${escapeHtml(format.id)}"${pluginFlag}>${escapeHtml(format.label)}</button>`;
+        })
+        .join("");
+
+      const exportMenu = `
+        <div class="export-menu-wrap">
+          <button class="header-btn" data-action="toggle-export-menu" aria-haspopup="true" aria-expanded="${state.exportMenuOpen}">Export ▾</button>
+          ${state.exportMenuOpen ? `<div class="export-menu">${formatButtons}</div>` : ""}
+        </div>
+      `;
+
+      const pluginActions = (window.OCV?.listSessionActions?.() ?? [])
+        .map(
+          (action) =>
+            `<button class="header-btn" data-action="plugin-session-action" data-action-id="${escapeHtml(action.id)}">${escapeHtml(action.label)}</button>`
+        )
+        .join("");
+
+      return `<div class="header-actions">${pluginActions}${exportMenu}</div>`;
+    }
+
     function renderMessagesPanel() {
       const fallbackTitle = getSelectedSession()?.title || "Session";
       const title = state.sessionData?.title ?? fallbackTitle;
@@ -967,6 +1013,7 @@
             <h2 class="panel-title">${escapeHtml(title || "Session")}</h2>
             <div class="panel-subtitle">${escapeHtml(subtitle)}</div>
           </div>
+          ${buildHeaderActions()}
           ${backBtn}
         </div>
       `;
@@ -1166,6 +1213,68 @@
       }
     }
 
+    function downloadBlob(content, filename, mime) {
+      const blob = content instanceof Blob ? content : new Blob([content], { type: mime || "text/plain" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function sessionExportBaseName() {
+      const raw = state.sessionData?.title || getSelectedSession()?.title || "session";
+      const slug = String(raw)
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60);
+      return slug || "session";
+    }
+
+    async function exportSession(format, isPlugin) {
+      if (!state.selectedSessionId || !format) return;
+      const base = sessionExportBaseName();
+
+      try {
+        if (isPlugin) {
+          const plugin = (window.OCV?.listExportFormats?.() ?? []).find((item) => item.id === format);
+          if (!plugin) return;
+          const content = plugin.build({ session: state.sessionData, messages: state.messages, state });
+          downloadBlob(content, `${base}.${plugin.extension || "txt"}`, plugin.mime || "text/plain");
+          return;
+        }
+
+        const url = `/api/sessions/${encodeURIComponent(state.selectedSessionId)}/export?format=${encodeURIComponent(format)}`;
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Export failed (HTTP ${response.status})`);
+        const blob = await response.blob();
+        const extension = format === "json" ? "json" : "md";
+        downloadBlob(blob, `${base}.${extension}`, blob.type);
+      } catch (error) {
+        console.error("Export failed:", error);
+        alert(`Export failed: ${error instanceof Error ? error.message : String(error)}`);
+      } finally {
+        if (state.exportMenuOpen) {
+          state.exportMenuOpen = false;
+          renderMessagesPanel();
+        }
+      }
+    }
+
+    function runSessionAction(actionId) {
+      const action = (window.OCV?.listSessionActions?.() ?? []).find((item) => item.id === actionId);
+      if (!action) return;
+      try {
+        action.handler({ session: state.sessionData, messages: state.messages, state });
+      } catch (error) {
+        console.error("OCV session action failed:", error);
+      }
+    }
+
     function clearSelectedSession() {
       state.selectedSessionId = null;
       state.sessionLoading = false;
@@ -1297,6 +1406,23 @@
         return;
       }
 
+      if (action === "toggle-export-menu") {
+        state.exportMenuOpen = !state.exportMenuOpen;
+        renderMessagesPanel();
+        return;
+      }
+
+      if (action === "export-session") {
+        state.exportMenuOpen = false;
+        await exportSession(target.dataset.format, target.dataset.plugin === "true");
+        return;
+      }
+
+      if (action === "plugin-session-action") {
+        runSessionAction(target.dataset.actionId);
+        return;
+      }
+
       if (action === "scroll-message") {
         const messageId = target.dataset.messageId;
         if (!messageId) return;
@@ -1421,5 +1547,26 @@
       renderMessagesPanel();
     }
 
-    initialRender();
-    loadProjects();
+    async function loadPlugins() {
+      try {
+        const payload = await fetchJson("/api/plugins");
+        const plugins = Array.isArray(payload?.plugins) ? payload.plugins : [];
+        for (const file of plugins) {
+          await new Promise((resolve) => {
+            const script = document.createElement("script");
+            script.src = `/plugins/${encodeURIComponent(file)}`;
+            script.onload = resolve;
+            script.onerror = resolve;
+            document.head.appendChild(script);
+          });
+        }
+      } catch (error) {
+        console.warn("Failed to load plugins:", error);
+      }
+    }
+
+    (async () => {
+      await loadPlugins();
+      initialRender();
+      loadProjects();
+    })();
