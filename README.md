@@ -11,7 +11,7 @@ Reads and writes `~/.local/share/opencode/opencode.db`. Everything stays on your
 bunx @homescriptone/opencode-viewer-extender
 ```
 
-> On npm: [`@homescriptone/opencode-viewer-extender`](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender) · Desktop builds (`.dmg`, Linux, Windows) are published on the [releases page](https://github.com/homescriptone/opencode-viewer-extended/releases).
+> On npm: [`@homescriptone/opencode-viewer-extender`](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender).
 
 ## Features
 
@@ -25,7 +25,7 @@ bunx @homescriptone/opencode-viewer-extender
 
 ## Requirements
 
-- [Bun](https://bun.sh) runtime (`curl -fsSL https://bun.sh/install | bash`), or a desktop build
+- [Bun](https://bun.sh) runtime (`curl -fsSL https://bun.sh/install | bash`)
 - [OpenCode](https://opencode.ai) installed and used at least once
 
 ## Usage
@@ -163,13 +163,9 @@ Publishing uses npm **trusted publishing (OIDC)** — no tokens or secrets. Push
 git tag v1.3.0 && git push origin v1.3.0
 ```
 
-[`.github/workflows/publish.yml`](.github/workflows/publish.yml) then type-checks and runs `npm publish` with provenance, and [`.github/workflows/desktop.yml`](.github/workflows/desktop.yml) builds the desktop installers and attaches them to the same release.
+[`.github/workflows/publish.yml`](.github/workflows/publish.yml) then type-checks and runs `npm publish` with provenance.
 
 One-time setup on [npmjs.com](https://www.npmjs.com): open the package → **Settings** → **Trusted Publisher** → **GitHub Actions**, and set the repository (`homescriptone/opencode-viewer-extended`) and workflow filename (`publish.yml`). No `NPM_TOKEN` secret is required.
-
-## Desktop app
-
-A Tauri wrapper lives in [`src-tauri/`](src-tauri/) and bundles the Bun server as a sidecar; installers are produced by CI and attached to releases.
 
 ## Credits
 
