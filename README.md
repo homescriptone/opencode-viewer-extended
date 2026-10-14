@@ -1,5 +1,8 @@
 # opencode-viewer-extender
 
+[![npm](https://img.shields.io/npm/v/@homescriptone/opencode-viewer-extender.svg)](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender)
+[![license](https://img.shields.io/npm/l/@homescriptone/opencode-viewer-extender.svg)](LICENSE)
+
 Local GUI to **browse, edit, and export** your [OpenCode](https://opencode.ai) sessions, messages, and tool calls from the SQLite database — with a small **plugin API** you can extend.
 
 Reads and writes `~/.local/share/opencode/opencode.db`. Everything stays on your machine.
@@ -8,7 +11,7 @@ Reads and writes `~/.local/share/opencode/opencode.db`. Everything stays on your
 bunx @homescriptone/opencode-viewer-extender
 ```
 
-> Desktop builds (`.dmg`, Linux, Windows) are published on the [releases page](https://github.com/homescriptone/opencode-viewer-extended/releases).
+> On npm: [`@homescriptone/opencode-viewer-extender`](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender) · Desktop builds (`.dmg`, Linux, Windows) are published on the [releases page](https://github.com/homescriptone/opencode-viewer-extended/releases).
 
 ## Features
 
@@ -145,10 +148,20 @@ bun run start   # production
 bun run typecheck
 ```
 
+## Releasing
+
+Publishing to npm is automated: pushing to `main`/`master` runs [`.github/workflows/publish.yml`](.github/workflows/publish.yml), which type-checks and publishes the current `package.json` version (skipping if that version already exists). Add an `NPM_TOKEN` repository secret (an npm automation token) for it to publish. Bumping the version is all you need to ship a release.
+
 ## Desktop app
 
 A Tauri wrapper lives in [`src-tauri/`](src-tauri/) and bundles the Bun server as a sidecar; installers are produced by CI and attached to releases.
 
+## Credits
+
+Maintained by [homescriptone Solutions Ltd](https://github.com/homescriptone). Built on
+[opencode-viewer](https://github.com/leeweisern/opencode-viewer) by its original author
+[leeweisern](https://github.com/leeweisern) — thank you.
+
 ## License
 
-[MIT](LICENSE)
+MIT © 2026 homescriptone Solutions Ltd. See [LICENSE](LICENSE).
