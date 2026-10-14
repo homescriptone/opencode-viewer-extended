@@ -15,13 +15,26 @@ if (!existsSync(DB_PATH)) {
   process.exit(1);
 }
 
+const WRITE_ENABLED = process.env.OCV_WRITE === "1";
+
 let db: Database;
 
 try {
-  db = new Database(DB_PATH, { readonly: true });
+  db = new Database(DB_PATH, { readonly: !WRITE_ENABLED });
 } catch (error) {
-  console.error("Failed to open OpenCode database in read-only mode:", error);
+  console.error("Failed to open OpenCode database:", error);
   process.exit(1);
+}
+
+if (WRITE_ENABLED) {
+  try {
+    db.exec("PRAGMA foreign_keys = ON");
+  } catch {
+    /* foreign keys already enabled or unsupported; cascades still defined in schema */
+  }
+  console.warn(
+    "Write mode ENABLED (OCV_WRITE=1): destructive storage operations (delete, vacuum) are available.",
+  );
 }
 
 type JsonObject = Record<string, unknown>;
@@ -72,7 +85,7 @@ type MessagePartJoinRow = {
 
 const corsHeaders: HeadersInit = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "GET, OPTIONS",
+  "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 

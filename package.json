@@ -1,5 +1,5 @@
 {
-  "name": "@virmont/opencode-viewer",
+  "name": "@homescriptone/opencode-viewer-extender",
   "version": "1.0.5",
   "description": "Local GUI to browse your OpenCode sessions, messages, and tool calls from the SQLite database",
   "bin": {
@@ -24,16 +24,22 @@
     "cli",
     "tui"
   ],
-  "author": "kelvin",
+  "author": "homescriptone",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/leeweisern/opencode-viewer.git"
+    "url": "git+https://github.com/homescriptone/opencode-viewer-extender.git"
   },
   "engines": {
     "bun": ">=1.0.0"
   },
   "publishConfig": {
     "access": "public"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5"
+  },
+  "dependencies": {
+    "@types/bun": "^1.4.3"
   }
 }
