@@ -941,6 +941,16 @@
       transition: border-color 0.15s ease, background 0.15s ease;
       flex: 0 0 auto;
       white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .header-btn svg {
+      width: 14px;
+      height: 14px;
+      display: block;
+      flex: 0 0 auto;
     }
 
     .header-btn:hover {

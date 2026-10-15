@@ -33,14 +33,21 @@ Reads:
 - `GET /api/sessions/:id` — session detail with messages + parts
 - `GET /api/sessions/:id/subagents` — subagent sessions
 - `GET /api/parts/:id/image` — base64 image extraction from part data
+- `GET /api/events` — OpenCode event-log stats (total/orphaned events and aggregates)
 
 Writes (JSON body):
 - `POST /api/projects` · `PATCH|PUT /api/projects/:id` · `DELETE /api/projects/:id`
 - `POST /api/sessions` · `PATCH|PUT /api/sessions/:id` · `DELETE /api/sessions/:id`
 - `POST /api/sessions/:id/messages` · `PATCH|PUT /api/messages/:id` · `DELETE /api/messages/:id`
 - `POST /api/messages/:id/parts` · `PATCH|PUT /api/parts/:id` · `DELETE /api/parts/:id`
+- `POST /api/vacuum` · `POST /api/checkpoint` · `POST /api/bulk-delete` · `POST /api/purge-events`
 
 IDs are generated server-side with typed prefixes (`proj_`, `ses_`, `msg_`, `prt_`) when omitted. Updates only apply whitelisted columns and auto-bump `time_updated`.
+
+Deleting a session or project also purges its OpenCode event-sourcing log rows (`event` / `event_sequence`).
+OpenCode's append-only `event` table is not foreign-keyed to `session`, so events for sessions deleted
+elsewhere linger; `POST /api/purge-events` (and the header "Reclaim" flow) removes those orphaned
+aggregates so a following VACUUM can shrink the file.
 
 The frontend is self-contained in `public/` — it fetches from the API and renders three panels with client-side state management.
 

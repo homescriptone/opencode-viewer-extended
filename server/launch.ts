@@ -37,6 +37,15 @@ import {
   deleteMessageStmt,
   deletePartStmt,
   listPlugins,
+  vacuumDatabase,
+  databaseSize,
+  deleteByIds,
+  dbInfo,
+  convertToIncremental,
+  incrementalVacuumStep,
+  checkpointWal,
+  eventLogInfo,
+  purgeOrphanedEvents,
 } from "./database";
 
 const ENTITY_ROUTES: Array<{
@@ -267,8 +276,55 @@ async function handleWrite(req: Request, url: URL): Promise<Response> {
   }
 
   if (method === "POST") {
+    if (pathname === "/api/vacuum") {
+      let body: JsonObject | null = null;
+      try {
+        body = (await req.json()) as JsonObject;
+      } catch {
+        body = null;
+      }
+      const mode = typeof body?.mode === "string" ? body.mode : "full";
+      try {
+        if (mode === "convert") {
+          return json({ ok: true, mode, info: convertToIncremental() });
+        }
+        if (mode === "step") {
+          const pageSize = dbInfo().pageSize || 4096;
+          const mb = typeof body?.mb === "number" && body.mb > 0 ? body.mb : 200;
+          const pages = Math.ceil((mb * 1024 * 1024) / pageSize);
+          return json({ ok: true, mode, info: incrementalVacuumStep(pages) });
+        }
+        return json({ ok: true, mode: "full", ...vacuumDatabase(), info: dbInfo() });
+      } catch (error) {
+        return badRequest(`VACUUM failed: ${String(error)}`);
+      }
+    }
+
+    if (pathname === "/api/checkpoint") {
+      return json({ ok: true, ...checkpointWal() });
+    }
+
+    if (pathname === "/api/purge-events") {
+      const sizeBefore = databaseSize();
+      const purged = purgeOrphanedEvents();
+      return json({ ok: true, ...purged, sizeBefore, sizeAfter: databaseSize(), info: dbInfo() });
+    }
+
     const body = await readJsonBody(req);
     if (!body) return badRequest("Invalid JSON body");
+
+    if (pathname === "/api/bulk-delete") {
+      const projectIds = Array.isArray(body.projectIds)
+        ? body.projectIds.filter((value): value is string => typeof value === "string")
+        : [];
+      const sessionIds = Array.isArray(body.sessionIds)
+        ? body.sessionIds.filter((value): value is string => typeof value === "string")
+        : [];
+      const deletedProjects = projectIds.length ? deleteByIds("project", projectIds) : 0;
+      const deletedSessions = sessionIds.length ? deleteByIds("session", sessionIds) : 0;
+      const purged = deletedProjects || deletedSessions ? purgeOrphanedEvents() : { aggregates: 0, events: 0 };
+      return json({ ok: true, deletedProjects, deletedSessions, purged });
+    }
 
     if (pathname === "/api/projects") {
       const worktree = getString(body.worktree);
@@ -339,7 +395,11 @@ async function handleWrite(req: Request, url: URL): Promise<Response> {
     const target = matchEntity(pathname);
     if (!target) return notFound();
     const result = DELETE_BY_TABLE[target.table].run(target.id);
-    return json({ ok: true, id: target.id, deleted: result.changes });
+    const purged =
+      target.table === "session" || target.table === "project"
+        ? purgeOrphanedEvents()
+        : { aggregates: 0, events: 0 };
+    return json({ ok: true, id: target.id, deleted: result.changes, purged });
   }
 
   return json({ error: "Method not allowed" }, 405);
@@ -413,6 +473,14 @@ const server = Bun.serve({
 
       if (pathname === "/api/config") {
         return json({ write: WRITE_ENABLED });
+      }
+
+      if (pathname === "/api/db") {
+        return json(dbInfo());
+      }
+
+      if (pathname === "/api/events") {
+        return json(eventLogInfo());
       }
 
       if (pathname === "/api/plugins") {

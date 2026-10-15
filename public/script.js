@@ -539,9 +539,10 @@
             <div class="panel-subtitle">${state.projects.length} total</div>
           </div>
           <div class="header-actions">
-            ${state.writeEnabled ? `<button class="header-btn ${state.editMode ? "active" : ""}" data-action="toggle-edit-mode">${state.editMode ? "Editing" : "Edit"}</button>` : ""}
-            ${hasBulkActions() ? `<button class="header-btn ${state.selectMode ? "active" : ""}" data-action="toggle-select-mode">${state.selectMode ? "Done" : "Select"}</button>` : ""}
-            <button class="header-btn ${state.pluginsOpen ? "active" : ""}" data-action="toggle-plugins">Plugins${plugins.length ? ` (${plugins.length})` : ""}</button>
+            ${state.writeEnabled ? `<button class="header-btn ${state.editMode ? "active" : ""}" data-action="toggle-edit-mode"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path></svg>${state.editMode ? "Editing" : "Edit"}</button>` : ""}
+            ${state.writeEnabled && state.editMode ? `<button class="header-btn" data-action="vacuum-db"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>Reclaim</button>` : ""}
+            ${hasBulkActions() ? `<button class="header-btn ${state.selectMode ? "active" : ""}" data-action="toggle-select-mode"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"></rect><polyline points="9 12 12 15 22 5"></polyline></svg>${state.selectMode ? "Done" : "Select"}</button>` : ""}
+            <button class="header-btn ${state.pluginsOpen ? "active" : ""}" data-action="toggle-plugins"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6"></path><path d="M12 12v6"></path><path d="M12 8a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M12 14a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path><path d="M12 20a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"></path></svg>Plugins${plugins.length ? ` (${plugins.length})` : ""}</button>
           </div>
         </div>
       `;
@@ -1608,6 +1609,69 @@
         return;
       }
 
+      if (action === "vacuum-db") {
+        const mb = (bytes) => (bytes / (1024 * 1024)).toFixed(1);
+        try {
+          const startSize = (await window.OCV.host.dbInfo()).size;
+          let purged = { aggregates: 0, events: 0 };
+
+          const events = await window.OCV.host.eventLogInfo();
+          if (events.available && events.orphanedAggregates > 0) {
+            const ok = window.confirm(
+              `The OpenCode event log holds ${events.events.toLocaleString()} rows across ${events.aggregates.toLocaleString()} aggregates.\n\n` +
+                `${events.orphanedAggregates.toLocaleString()} aggregate(s) (~${events.orphanedEvents.toLocaleString()} rows) belong to sessions that no longer exist and will never be read again.\n\nPurge them before reclaiming space?`
+            );
+            if (!ok) return;
+            window.OCV.host.setStatus("Purging orphaned event log…");
+            purged = await window.OCV.host.purgeEvents();
+          }
+
+          const info = await window.OCV.host.dbInfo();
+          const startWal = info.walSize;
+          let reclaimed = 0;
+
+          if (info.freelistPages > 0) {
+            if (info.autoVacuum === 0) {
+              const ok = window.confirm(
+                `Reclaim about ${mb(info.reclaimableBytes)} MB?\n\nThe database is not in incremental mode, so the first pass is a one-time full rewrite (can be slow and needs free disk space). After that, space is reclaimed in ~200 MB steps.`
+              );
+              if (!ok) return;
+              window.OCV.host.setStatus("One-time conversion (full rewrite)…");
+              const converted = await window.OCV.host.vacuum("convert");
+              reclaimed = Math.max(0, startSize - converted.info.size);
+            } else {
+              const total = info.reclaimableBytes || 1;
+              let lastSize = startSize;
+              for (let step = 0; step < 5000; step += 1) {
+                window.OCV.host.setProgress(Math.max(0, startSize - lastSize), total, "Reclaiming ~200 MB…");
+                const result = await window.OCV.host.vacuum("step", 200);
+                const current = result.info;
+                const done = current.freelistPages === 0 || current.size >= lastSize;
+                lastSize = current.size;
+                if (done) break;
+              }
+              window.OCV.host.setProgress(Math.max(0, startSize - lastSize), total, "Reclaiming space…");
+              reclaimed = Math.max(0, startSize - lastSize);
+            }
+          }
+
+          window.OCV.host.setStatus("Checkpointing WAL…");
+          const checkpoint = await window.OCV.host.checkpoint();
+          const finalInfo = await window.OCV.host.dbInfo();
+          const purgeLine = purged.events
+            ? `Purged ${purged.events.toLocaleString()} event rows from ${purged.aggregates.toLocaleString()} aggregate(s).\n`
+            : "";
+          alert(
+            `${purgeLine}Done.\nDatabase: ${mb(startSize)} MB → ${mb(finalInfo.size)} MB (reclaimed ${mb(reclaimed)} MB)\nWAL: ${mb(startWal)} MB → ${mb(checkpoint.walSize)} MB`
+          );
+        } catch (error) {
+          alert(`Reclaim failed: ${error instanceof Error ? error.message : String(error)}`);
+        } finally {
+          window.OCV.host.clearStatus();
+        }
+        return;
+      }
+
       if (action === "toggle-edit-mode") {
         state.editMode = !state.editMode;
         renderProjectsPanel();
@@ -1878,6 +1942,45 @@
         },
         download: (filename, content, mime) => downloadBlob(content, filename, mime),
         createZip: (entries) => window.OCV.helpers.createZip(entries),
+        dbInfo: () => fetchJson("/api/db"),
+        eventLogInfo: () => fetchJson("/api/events"),
+        purgeEvents: async () => {
+          const response = await fetch("/api/purge-events", { method: "POST" });
+          if (!response.ok) {
+            let message = `Purge failed (HTTP ${response.status})`;
+            try {
+              const body = await response.json();
+              if (body?.error) message = body.error;
+            } catch {
+              /* ignore */
+            }
+            throw new Error(message);
+          }
+          return response.json();
+        },
+        vacuum: async (mode = "full", mb = 200) => {
+          const response = await fetch("/api/vacuum", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode, mb })
+          });
+          if (!response.ok) {
+            let message = `Vacuum failed (HTTP ${response.status})`;
+            try {
+              const body = await response.json();
+              if (body?.error) message = body.error;
+            } catch {
+              /* ignore */
+            }
+            throw new Error(message);
+          }
+          return response.json();
+        },
+        checkpoint: async () => {
+          const response = await fetch("/api/checkpoint", { method: "POST" });
+          if (!response.ok) throw new Error(`Checkpoint failed (HTTP ${response.status})`);
+          return response.json();
+        },
         notify: (message) => console.log("[OCV]", message),
         setStatus: (label) => {
           state.status = { label };
@@ -1937,6 +2040,15 @@
           deleteSession: async (id) => {
             const response = await fetch(`/api/sessions/${encodeURIComponent(id)}`, { method: "DELETE" });
             if (!response.ok) throw new Error(`Delete session failed (HTTP ${response.status})`);
+            return response.json();
+          },
+          bulkDelete: async (projectIds, sessionIds) => {
+            const response = await fetch("/api/bulk-delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ projectIds, sessionIds })
+            });
+            if (!response.ok) throw new Error(`Bulk delete failed (HTTP ${response.status})`);
             return response.json();
           }
         }

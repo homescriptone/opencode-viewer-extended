@@ -111,18 +111,13 @@ OCV.define({
         if (!ok) return;
 
         const total = projectIds.length + sessionIds.length;
-        let deleted = 0;
         try {
-          host.setProgress(0, total, "Deleting…");
-          for (const projectId of projectIds) {
-            await host.api.deleteProject(projectId);
-            deleted += 1;
-            host.setProgress(deleted, total, "Deleting…");
-          }
-          for (const sessionId of sessionIds) {
-            await host.api.deleteSession(sessionId);
-            deleted += 1;
-            host.setProgress(deleted, total, "Deleting…");
+          host.setStatus(`Deleting ${total} item(s)…`);
+          if (typeof host.api.bulkDelete === "function") {
+            await host.api.bulkDelete(projectIds, sessionIds);
+          } else {
+            for (const projectId of projectIds) await host.api.deleteProject(projectId);
+            for (const sessionId of sessionIds) await host.api.deleteSession(sessionId);
           }
         } finally {
           host.clearStatus();
@@ -130,7 +125,7 @@ OCV.define({
 
         host.clearSelection();
         host.refresh();
-        host.notify(`Deleted ${deleted} item(s).`);
+        host.notify(`Deleted ${total} item(s).`);
       }
     });
   }

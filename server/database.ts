@@ -37,6 +37,14 @@ if (WRITE_ENABLED) {
   );
 }
 
+try {
+  // Keep the WAL from growing unbounded: after each checkpoint it is truncated
+  // down to at most this size (64 MB).
+  db.exec("PRAGMA journal_size_limit = 67108864");
+} catch {
+  /* not supported */
+}
+
 export type JsonObject = Record<string, unknown>;
 
 export type ProjectRow = {
@@ -264,6 +272,273 @@ export const deleteProjectStmt = db.query("DELETE FROM project WHERE id = ?");
 export const deleteSessionStmt = db.query("DELETE FROM session WHERE id = ?");
 export const deleteMessageStmt = db.query("DELETE FROM message WHERE id = ?");
 export const deletePartStmt = db.query("DELETE FROM part WHERE id = ?");
+
+const projectExistsStmt = db.query<{ id: string }, SQLQueryBindings[]>("SELECT id FROM project WHERE id = ?");
+const sessionExistsStmt = db.query<{ id: string }, SQLQueryBindings[]>("SELECT id FROM session WHERE id = ?");
+
+export function databaseSize(): number {
+  try {
+    return statSync(DB_PATH).size;
+  } catch {
+    return 0;
+  }
+}
+
+function pragmaNumber(name: string, fallback: number): number {
+  try {
+    const row = db.query<Record<string, number>, SQLQueryBindings[]>(`PRAGMA ${name}`).get();
+    if (!row) return fallback;
+    const value = Object.values(row)[0];
+    return typeof value === "number" ? value : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// Cap SQLite's page cache so heavy operations don't balloon process memory.
+function limitMemory(): void {
+  try {
+    db.exec("PRAGMA cache_size = -65536"); // ~64 MB
+    db.exec("PRAGMA temp_store = FILE");
+    db.exec("PRAGMA mmap_size = 0"); // don't map the whole file into memory
+  } catch {
+    /* best effort */
+  }
+}
+
+export function walSize(): number {
+  try {
+    return statSync(`${DB_PATH}-wal`).size;
+  } catch {
+    return 0;
+  }
+}
+
+function journalMode(): string {
+  try {
+    const row = db.query<Record<string, unknown>, SQLQueryBindings[]>("PRAGMA journal_mode").get();
+    const value = row ? Object.values(row)[0] : undefined;
+    return typeof value === "string" ? value : "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+// Flush the write-ahead log back into the database and truncate the `-wal` file
+// to zero. This is what actually shrinks the WAL after heavy writes.
+export function checkpointWal(): {
+  busy: number;
+  logPages: number;
+  checkpointedPages: number;
+  walSize: number;
+} {
+  let busy = -1;
+  let logPages = 0;
+  let checkpointedPages = 0;
+  try {
+    const row = db
+      .query<Record<string, number>, SQLQueryBindings[]>("PRAGMA wal_checkpoint(TRUNCATE)")
+      .get();
+    if (row) {
+      const values = Object.values(row).map(Number);
+      busy = values[0] ?? -1;
+      logPages = values[1] ?? 0;
+      checkpointedPages = values[2] ?? 0;
+    }
+  } catch {
+    /* not in WAL mode or unsupported */
+  }
+  return { busy, logPages, checkpointedPages, walSize: walSize() };
+}
+
+export type DbInfo = {
+  size: number;
+  pageSize: number;
+  pageCount: number;
+  freelistPages: number;
+  reclaimableBytes: number;
+  autoVacuum: number;
+  journalMode: string;
+  walSize: number;
+};
+
+export function dbInfo(): DbInfo {
+  const pageSize = pragmaNumber("page_size", 4096);
+  const pageCount = pragmaNumber("page_count", 0);
+  const freelistPages = pragmaNumber("freelist_count", 0);
+  const autoVacuum = pragmaNumber("auto_vacuum", 0);
+  return {
+    size: databaseSize(),
+    pageSize,
+    pageCount,
+    freelistPages,
+    reclaimableBytes: freelistPages * pageSize,
+    autoVacuum,
+    journalMode: journalMode(),
+    walSize: walSize(),
+  };
+}
+
+// SQLite keeps freed pages for reuse after DELETE, so the file does not shrink
+// on its own. A full VACUUM rewrites the whole file (slow, memory/disk heavy).
+export function vacuumDatabase(): { sizeBefore: number; sizeAfter: number } {
+  limitMemory();
+  const sizeBefore = databaseSize();
+  db.exec("VACUUM");
+  db.exec("PRAGMA optimize");
+  checkpointWal();
+  const sizeAfter = databaseSize();
+  return { sizeBefore, sizeAfter };
+}
+
+// One-time switch to incremental auto-vacuum (requires a full rewrite), after
+// which `incrementalVacuumStep` can reclaim space in small batches.
+export function convertToIncremental(): DbInfo {
+  limitMemory();
+  db.exec("PRAGMA auto_vacuum = INCREMENTAL");
+  db.exec("VACUUM");
+  db.exec("PRAGMA optimize");
+  checkpointWal();
+  return dbInfo();
+}
+
+// Reclaim up to `maxPages` free pages (roughly maxPages * pageSize bytes) from
+// the end of the file. Works only when auto_vacuum is INCREMENTAL or FULL.
+export function incrementalVacuumStep(maxPages: number): DbInfo {
+  limitMemory();
+  db.exec(`PRAGMA incremental_vacuum(${Math.max(1, Math.floor(maxPages))})`);
+  checkpointWal();
+  return dbInfo();
+}
+
+export type EventLogInfo = {
+  available: boolean;
+  events: number;
+  aggregates: number;
+  orphanedAggregates: number;
+  orphanedEvents: number;
+};
+
+// OpenCode's event-sourcing log lives in `event` (one row per change) with one
+// `event_sequence` row per aggregate (a session id). Nothing there is
+// foreign-keyed to `session`, so deleting a session leaves its events behind.
+export function eventLogInfo(): EventLogInfo {
+  try {
+    const events =
+      db.query<{ total: number }, SQLQueryBindings[]>("SELECT COUNT(*) as total FROM event").get()
+        ?.total ?? 0;
+    const aggregates =
+      db
+        .query<{ total: number }, SQLQueryBindings[]>(
+          "SELECT COUNT(*) as total FROM event_sequence",
+        )
+        .get()?.total ?? 0;
+    const orphanedAggregates =
+      db
+        .query<{ total: number }, SQLQueryBindings[]>(
+          `SELECT COUNT(*) as total FROM event_sequence
+           WHERE aggregate_id NOT IN (SELECT id FROM session)`,
+        )
+        .get()?.total ?? 0;
+    const liveEvents =
+      db
+        .query<{ total: number }, SQLQueryBindings[]>(
+          `SELECT COUNT(*) as total FROM event
+           WHERE aggregate_id IN (SELECT id FROM session)`,
+        )
+        .get()?.total ?? 0;
+
+    return {
+      available: true,
+      events,
+      aggregates,
+      orphanedAggregates,
+      orphanedEvents: Math.max(0, events - liveEvents),
+    };
+  } catch {
+    return {
+      available: false,
+      events: 0,
+      aggregates: 0,
+      orphanedAggregates: 0,
+      orphanedEvents: 0,
+    };
+  }
+}
+
+// Delete the event log for aggregates whose session no longer exists. Events are
+// removed before their `event_sequence` row so this does not depend on foreign
+// keys being enabled. Work is chunked to avoid one giant write transaction.
+export function purgeOrphanedEvents(): { aggregates: number; events: number } {
+  let orphans: string[] = [];
+  try {
+    orphans = db
+      .query<{ aggregate_id: string }, SQLQueryBindings[]>(
+        `SELECT aggregate_id FROM event_sequence
+         WHERE aggregate_id NOT IN (SELECT id FROM session)`,
+      )
+      .all()
+      .map((row) => row.aggregate_id);
+  } catch {
+    return { aggregates: 0, events: 0 };
+  }
+
+  if (!orphans.length) return { aggregates: 0, events: 0 };
+
+  const deleteEvents = db.query("DELETE FROM event WHERE aggregate_id = ?");
+  const deleteSequence = db.query("DELETE FROM event_sequence WHERE aggregate_id = ?");
+  const chunkSize = 25;
+  let events = 0;
+  let aggregates = 0;
+
+  for (let offset = 0; offset < orphans.length; offset += chunkSize) {
+    const batch = orphans.slice(offset, offset + chunkSize);
+    const runBatch = db.transaction((ids: string[]) => {
+      let removed = 0;
+      for (const id of ids) {
+        const result = deleteEvents.run(id);
+        removed += Number(result.changes ?? 0);
+        deleteSequence.run(id);
+      }
+      return removed;
+    });
+    events += Number(runBatch(batch) ?? 0);
+    aggregates += batch.length;
+  }
+
+  checkpointWal();
+  return { aggregates, events };
+}
+
+// Delete many rows for one table in small transactions (chunks). This avoids one
+// giant write transaction / lock while staying far faster than one request per id.
+export function deleteByIds(
+  table: "project" | "session",
+  ids: string[],
+  chunkSize = 250,
+): number {
+  const statement = table === "project" ? deleteProjectStmt : deleteSessionStmt;
+  const exists = table === "project" ? projectExistsStmt : sessionExistsStmt;
+  let deleted = 0;
+
+  for (let offset = 0; offset < ids.length; offset += chunkSize) {
+    const chunk = ids.slice(offset, offset + chunkSize);
+    const runChunk = db.transaction((batch: string[]) => {
+      let count = 0;
+      for (const id of batch) {
+        if (exists.get(id)) {
+          statement.run(id);
+          count += 1;
+        }
+      }
+      return count;
+    });
+    deleted += runChunk(chunk) as number;
+  }
+
+  checkpointWal();
+  return deleted;
+}
 
 const UPDATABLE_COLUMNS: Record<string, string[]> = {
   project: ["worktree", "name", "icon_color", "icon_url", "icon_url_override", "vcs"],

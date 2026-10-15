@@ -55,6 +55,17 @@ The database is opened **read-only** by default. Writes only become available wh
 
 > **Warning:** edits and deletes hit your real OpenCode database, and deletes **cascade** (deleting a project removes its sessions, messages, and parts). There is no undo. Back up `opencode.db` before making changes.
 
+### Reclaiming space (Vacuum)
+
+SQLite keeps freed pages for reuse, so the database file does **not** shrink after deletes. With edit mode on, a **Reclaim** button appears in the projects header. It reports the reclaimable space and then:
+
+- if the database is **not** in incremental mode, it runs a **one-time full rewrite** (`VACUUM`) to switch to incremental auto-vacuum; afterwards space is reclaimed in fast, resumable **~200 MB steps**;
+- otherwise it reclaims immediately in ~200 MB steps (`PRAGMA incremental_vacuum`).
+
+Both paths are also available over HTTP: `GET /api/db` reports size/free pages, and `POST /api/vacuum` takes `{ "mode": "full" | "convert" | "step", "mb": 200 }`. Operations cap SQLite's cache/mmap to keep memory low, but a full rewrite needs free disk space roughly equal to the current DB size and can take a while on large databases. If OpenCode is running it may hold the database, so quit OpenCode first.
+
+The database uses WAL, so heavy writes grow a `-wal` file that isn't reclaimed until a checkpoint. The app runs `PRAGMA wal_checkpoint(TRUNCATE)` (also `POST /api/checkpoint`) after reclaims and bulk deletes to shrink it, and sets `PRAGMA journal_size_limit` so it can't grow unbounded.
+
 ## Export
 
 - **Single session** — the **Export ▾** menu in the message header offers Markdown (`.md`) and JSON (`.json`), served by `GET /api/sessions/:id/export?format=md|json`.
@@ -166,6 +177,17 @@ git tag v1.3.0 && git push origin v1.3.0
 [`.github/workflows/publish.yml`](.github/workflows/publish.yml) then type-checks and runs `npm publish` with provenance.
 
 One-time setup on [npmjs.com](https://www.npmjs.com): open the package → **Settings** → **Trusted Publisher** → **GitHub Actions**, and set the repository (`homescriptone/opencode-viewer-extended`) and workflow filename (`publish.yml`). No `NPM_TOKEN` secret is required.
+
+## Contributing
+
+**Pull requests are welcome and encouraged!** Bug fixes, features, docs, and new plugins are all appreciated.
+
+- Fork the repo, create a branch, and make your change.
+- Run `bun run dev` while developing and `bun run typecheck` before opening the PR.
+- Keep PRs focused and describe what changed and why.
+
+Questions and ideas are welcome too — open an issue at
+[github.com/homescriptone/opencode-viewer-extended/issues](https://github.com/homescriptone/opencode-viewer-extended/issues).
 
 ## Credits
 
