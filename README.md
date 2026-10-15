@@ -3,37 +3,44 @@
 [![npm](https://img.shields.io/npm/v/@homescriptone/opencode-viewer-extender.svg)](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender)
 [![license](https://img.shields.io/npm/l/@homescriptone/opencode-viewer-extender.svg)](LICENSE)
 
-Local GUI to **browse, edit, and export** your [OpenCode](https://opencode.ai) sessions, messages, and tool calls from the SQLite database — with a small **plugin API** you can extend.
+A local web GUI to **browse, search, edit, and export** your [OpenCode](https://opencode.ai) AI coding sessions. It reads from and writes to the OpenCode SQLite database (`~/.local/share/opencode/opencode.db`) and stays entirely on your machine.
 
-Reads and writes `~/.local/share/opencode/opencode.db`. Everything stays on your machine.
+Runs with a single command:
 
 ```bash
 bunx @homescriptone/opencode-viewer-extender
 ```
 
-> On npm: [`@homescriptone/opencode-viewer-extender`](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender).
+> Available on npm: [`@homescriptone/opencode-viewer-extender`](https://www.npmjs.com/package/@homescriptone/opencode-viewer-extender).
 
 ## Features
 
-- **Three-panel UI** — projects, sessions, and the full message thread
-- **Every part type rendered** — text (markdown-lite), reasoning, tool calls with input/output, patches, file attachments, images (click-to-expand), agent pills, step-finish costs, compaction markers
-- **Subagents** — interleaved in the timeline; click to drill in, back to return
-- **Search** — cross-project session search scoped to all / user / model messages
-- **Export** — a session as Markdown or JSON, or **select many** projects/sessions and export a single `.zip`
-- **Edit mode** — opt-in create/update/delete (projects, sessions, messages, parts)
-- **Plugins** — drop a `.js` file in `public/plugins/` to add renderers, export formats, and bulk actions; toggle them on/off from the UI
+- **Three-panel UI** — Browse projects, sessions, and the full message thread in one view.
+- **Rich message rendering** — Renders text (Markdown), reasoning, tool calls (with inputs/outputs), patches, file attachments, images (click to expand), agent pills, step-finish costs, and compaction markers.
+- **Subagents** — Subagent sessions are interleaved in the timeline. Click to drill into a subagent run, and use "Back" to return.
+- **Powerful search** — Global cross-project session search with scope filters (all / user / assistant/model messages).
+- **Flexible export** — Export a single session as Markdown or JSON, or select multiple projects/sessions and export everything as a single `.zip` (with JSON, XML, and HTML per item).
+- **Opt-in edit mode** — Safely create, update, or delete projects, sessions, messages, and parts when explicitly enabled.
+- **Extensible via plugins** — Drop `.js` files in `public/plugins/` to add custom part renderers, export formats, session actions, or bulk actions. Toggle plugins on/off in the UI.
+- **Local-first** — No network requests leave your machine. All data comes directly from your local OpenCode database.
 
 ## Requirements
 
 - [Bun](https://bun.sh) runtime (`curl -fsSL https://bun.sh/install | bash`)
 - [OpenCode](https://opencode.ai) installed and used at least once
 
+## Quick Start
+
+```bash
+# Run and auto-open in your browser
+bunx @homescriptone/opencode-viewer-extender
+```
+
+The app will open at `http://localhost:3456` by default.
+
 ## Usage
 
 ```bash
-# Run it (auto-opens the browser)
-bunx @homescriptone/opencode-viewer-extender
-
 # Custom port
 bunx @homescriptone/opencode-viewer-extender -p 8080
 
@@ -43,82 +50,117 @@ bunx @homescriptone/opencode-viewer-extender --db /path/to/opencode.db
 # Enable edit mode (create/update/delete)
 bunx @homescriptone/opencode-viewer-extender --write
 
-# Don't open the browser
+# Don't auto-open the browser
 bunx @homescriptone/opencode-viewer-extender --no-open
 ```
 
-Default port is `3456` when launched via the CLI. Set `OCV_PORT`, `OCV_DB_PATH`, or `OCV_WRITE=1` to override.
+### Environment Variables
 
-## Edit mode
+You can also configure via environment variables instead of CLI flags:
 
-The database is opened **read-only** by default. Writes only become available when you start with `--write` (or `OCV_WRITE=1`); the server then exposes the write API and the UI shows an **Edit** toggle.
+| Variable | Purpose | Default |
+|---|---|---|
+| `OCV_PORT` | Server port | `3456` (CLI), random (direct `server/launch.ts`) |
+| `OCV_DB_PATH` | Path to OpenCode SQLite DB | `~/.local/share/opencode/opencode.db` |
+| `OCV_WRITE` | Enable edit mode (`1`/`true`) | `0` |
 
-> **Warning:** edits and deletes hit your real OpenCode database, and deletes **cascade** (deleting a project removes its sessions, messages, and parts). There is no undo. Back up `opencode.db` before making changes.
+## Edit Mode
 
-### Reclaiming space (Vacuum)
+By default, the database is opened **read-only**. Write operations are only available when started with `--write` (or `OCV_WRITE=1`). When enabled, the server exposes the write API and the UI shows an **Edit** toggle.
 
-SQLite keeps freed pages for reuse, so the database file does **not** shrink after deletes. With edit mode on, a **Reclaim** button appears in the projects header. It reports the reclaimable space and then:
+> ⚠️ **Safety warning:** Edits and deletes apply to your real OpenCode database. Deletions **cascade** (deleting a project removes its sessions, messages, and parts). **There is no undo.** Back up `opencode.db` before making changes.
 
-- if the database is **not** in incremental mode, it runs a **one-time full rewrite** (`VACUUM`) to switch to incremental auto-vacuum; afterwards space is reclaimed in fast, resumable **~200 MB steps**;
-- otherwise it reclaims immediately in ~200 MB steps (`PRAGMA incremental_vacuum`).
+## Reclaiming Database Space (Vacuum)
 
-Both paths are also available over HTTP: `GET /api/db` reports size/free pages, and `POST /api/vacuum` takes `{ "mode": "full" | "convert" | "step", "mb": 200 }`. Operations cap SQLite's cache/mmap to keep memory low, but a full rewrite needs free disk space roughly equal to the current DB size and can take a while on large databases. If OpenCode is running it may hold the database, so quit OpenCode first.
+SQLite reuses freed pages after deletes instead of shrinking the database file. With edit mode enabled, a **Reclaim** button appears in the Projects header. It shows reclaimable space and automatically chooses the best strategy:
 
-The database uses WAL, so heavy writes grow a `-wal` file that isn't reclaimed until a checkpoint. The app runs `PRAGMA wal_checkpoint(TRUNCATE)` (also `POST /api/checkpoint`) after reclaims and bulk deletes to shrink it, and sets `PRAGMA journal_size_limit` so it can't grow unbounded.
+- **If not in incremental auto-vacuum** — Runs a one-time full rewrite (`VACUUM`) to convert to incremental auto-vacuum. After conversion, space is reclaimed in fast, resumable ~200 MB steps.
+- **If already in incremental auto-vacuum** — Reclaims space immediately in ~200 MB steps (`PRAGMA incremental_vacuum`).
+
+These operations are also available via HTTP: `GET /api/db` reports DB size and free pages, and `POST /api/vacuum` accepts `{ "mode": "full" | "convert" | "step", "mb": 200 }`.
+
+**Notes:**
+
+- A full `VACUUM` rewrite requires free disk space roughly equal to the current DB size and can take time on large databases.
+- If OpenCode is currently running, it may hold a lock on the database — quit OpenCode first for safest results.
+- The app uses WAL journaling. Heavy writes grow a `-wal` file that isn't fully reclaimed until a checkpoint. After reclaims or bulk deletes, it runs `PRAGMA wal_checkpoint(TRUNCATE)` (also exposed as `POST /api/checkpoint`) and sets `PRAGMA journal_size_limit` to prevent unbounded WAL growth.
 
 ## Export
 
-- **Single session** — the **Export ▾** menu in the message header offers Markdown (`.md`) and JSON (`.json`), served by `GET /api/sessions/:id/export?format=md|json`.
-- **Bulk** — turn on **Select**, use **All projects** / **All sessions** (or pick individual items), and choose **Export selected (.zip)**. A progress indicator appears for larger exports. The archive is grouped into folders, and every item is written in three formats (`.json`, `.xml`, `.html`):
+### Single Session
 
-  ```
-  manifest.json
-  projects/<project>/project.{json,xml,html}
-  projects/<project>/sessions/<session>/session.{json,xml,html}
-  sessions/<session>/session.{json,xml,html}    # directly-selected sessions
-  ```
+In the message header, open the **Export ▾** menu to download a session as:
+- **Markdown** (`.md`) — Human-readable export
+- **JSON** (`.json`) — Machine-readable, preserves full structure
+
+Served by `GET /api/sessions/:id/export?format=md|json`.
+
+### Bulk Export (.zip)
+
+Enable **Select** mode, choose projects/sessions (or **All projects** / **All sessions**), then select **Export selected (.zip)**. A progress indicator shows for larger exports.
+
+The archive is organized as follows:
+
+```text
+manifest.json
+projects/<project>/project.{json,xml,html}
+projects/<project>/sessions/<session>/session.{json,xml,html}
+sessions/<session>/session.{json,xml,html}    # directly-selected sessions
+```
+
+Each item is exported in **three formats** (`.json`, `.xml`, `.html`) for maximum compatibility.
 
 ## Plugins
 
-Plugins are plain ES scripts discovered at startup from `public/plugins/` (listed by `GET /api/plugins`) and loaded before the UI renders. Enable/disable them from the **Plugins** button; disabled plugins are remembered in `localStorage`.
+Plugins are plain ES modules discovered from `public/plugins/` at startup (`GET /api/plugins`). Enable/disable them from the **Plugins** button — disabled plugins are remembered in `localStorage`.
 
-See [`public/plugins/example.js`](public/plugins/example.js) for a complete example.
+See [`public/plugins/example.js`](public/plugins/example.js) for a complete working example.
 
-### Authoring
+### Authoring Plugins
 
 ```js
 OCV.define({
   id: "my-plugin",
-  name: "My plugin",
+  name: "My Plugin",
   description: "What it does",
 
   setup(api) {
     // Render a custom part type -> HTML string (return falsy to fall back)
     api.registerPartRenderer("snapshot", (part, helpers) => `...`);
 
-    // Add an export format to the Export menu (built in the browser)
+    // Add an export format to the Export menu (runs in the browser)
     api.registerExportFormat({
-      id: "txt", label: "Plain text (.txt)", extension: "txt", mime: "text/plain",
+      id: "txt",
+      label: "Plain text (.txt)",
+      extension: "txt",
+      mime: "text/plain",
       build: ({ session, messages }) => "..."
     });
 
     // Add a button in the session header
-    api.registerSessionAction({ id: "copy", label: "Copy ID", handler: ({ session }) => {} });
+    api.registerSessionAction({
+      id: "copy",
+      label: "Copy ID",
+      handler: ({ session }) => {}
+    });
 
     // Add a bulk action shown when items are selected
     api.registerBulkAction({
-      id: "wipe", label: "Delete selected", danger: true, write: true, // write:true => only in Edit mode
+      id: "wipe",
+      label: "Delete selected",
+      danger: true,
+      write: true, // only shown/enabled in Edit mode
       handler: async ({ projectIds, sessionIds, host }) => { /* ... */ }
     });
   }
 });
 ```
 
-Every `register*` call returns an unregister function, and registrations are removed automatically when the plugin is disabled.
+Every `register*` call returns an `unregister()` function. Registrations are automatically removed when the plugin is disabled.
 
-### Host bridge
+### Host Bridge
 
-`api.host` (also `OCV.host`) exposes data and actions:
+`api.host` (also `OCV.host`) exposes data and actions for plugins:
 
 ```js
 host.getProjects()                       // [{ id, name, worktree }]
@@ -129,71 +171,111 @@ host.api.getProjectSessions(projectId)   // all sessions for a project
 host.api.getSessionDetail(sessionId)     // { session, messages }
 host.api.deleteProject(id)
 host.api.deleteSession(id)
-host.download(name, content, mime)       // save a Blob/string
-host.createZip([{ name, data }])         // -> Blob (store method, no deps)
+host.download(name, content, mime)       // download Blob/string
+host.createZip([{ name, data }])         // -> Blob (no external deps)
 host.refresh()                           // reload projects/sessions
 ```
 
-## How it works
+## How It Works
 
-```
-bin/cli.ts            → CLI args, env setup, opens the browser
-server/launch.ts      → Bun.serve HTTP server, routing, static files, export
+```text
+bin/cli.ts            → CLI args, env setup, auto-opens browser
+server/launch.ts      → Bun.serve HTTP server, routing, static files, exports
 server/database.ts    → SQLite connection, prepared statements, write layer
 public/index.html     → Page shell (loads plugin-api.js + script.js)
 public/script.js      → Single-page app (vanilla JS, no framework)
-public/plugin-api.js  → window.OCV plugin registry (+ zip helper)
+public/plugin-api.js  → window.OCV plugin registry (+ ZIP helper)
 public/plugins/*.js   → Drop-in plugins
 public/styles.css     → Styles
 ```
 
 1. Opens `opencode.db` (read-only unless `--write`).
-2. Starts a Bun server on `localhost:3456`.
+2. Starts a Bun HTTP server on `localhost:3456` (or configured port).
 3. Serves the static SPA and a small JSON REST API.
 4. All data stays local — nothing leaves your machine.
 
-### REST API
+## REST API
 
-Reads: `GET /api/projects` · `GET /api/projects/:id/sessions` · `GET /api/sessions/search` · `GET /api/sessions/:id` · `GET /api/sessions/:id/subagents` · `GET /api/sessions/:id/export` · `GET /api/parts/:id/image` · `GET /api/plugins` · `GET /api/config`
+### Reads (always available)
 
-Writes (require `--write`): `POST/PATCH/PUT/DELETE` on `/api/projects`, `/api/sessions`, `/api/sessions/:id/messages`, `/api/messages/:id/parts`.
+- `GET /api/projects` — List all projects
+- `GET /api/projects/:id/sessions?page=&limit=&q=&scope=` — Paginated/searchable sessions for a project
+- `GET /api/sessions/search?q=&scope=&page=&limit=` — Global session search
+- `GET /api/sessions/:id` — Session detail (session + messages + parts)
+- `GET /api/sessions/:id/subagents` — Subagent sessions for a parent session
+- `GET /api/sessions/:id/export?format=md|json` — Export a single session
+- `GET /api/parts/:id/image` — Extract base64 image from part data
+- `GET /api/events` — OpenCode event-log stats (totals, orphaned events, aggregates)
+- `GET /api/plugins` — List discovered plugins
+- `GET /api/config` — Server/config metadata
+- `GET /api/db` — Database size and reclaimable/free pages
+
+### Writes (require `--write`/edit mode)
+
+- **Projects**: `POST /api/projects`, `PATCH /api/projects/:id`, `PUT /api/projects/:id`, `DELETE /api/projects/:id`
+- **Sessions**: `POST /api/sessions`, `PATCH /api/sessions/:id`, `PUT /api/sessions/:id`, `DELETE /api/sessions/:id`
+- **Messages**: `POST /api/sessions/:id/messages`, `PATCH /api/messages/:id`, `PUT /api/messages/:id`, `DELETE /api/messages/:id`
+- **Parts**: `POST /api/messages/:id/parts`, `PATCH /api/parts/:id`, `PUT /api/parts/:id`, `DELETE /api/parts/:id`
+- **Maintenance**: `POST /api/vacuum`, `POST /api/checkpoint`, `POST /api/bulk-delete`, `POST /api/purge-events`
+
+IDs are generated server-side with typed prefixes (`proj_`, `ses_`, `msg_`, `prt_`) when omitted. Updates only apply whitelisted columns and auto-bump `time_updated`. Deletions cascade and also purge related OpenCode event log rows (`event`/`event_sequence`); `POST /api/purge-events` removes orphaned events left by external deletions.
 
 ## Development
 
 ```bash
-bun run dev     # watch mode (server/launch.ts)
-bun run start   # production
+# Watch mode (auto-reloads on changes)
+bun run dev
+
+# Production mode
+bun run start
+
+# Enable edit mode in dev
+bun run dev -- --write
+
+# Type check
 bun run typecheck
 ```
 
 ## Releasing
 
-Publishing uses npm **trusted publishing (OIDC)** — no tokens or secrets. Push a version tag:
+This repo uses **npm Trusted Publishing (OIDC)** and is fully automated with [release-please](https://github.com/googleapis/release-please-action).
+
+### How it works
+
+1. **Commit with Conventional Commits** — Use `feat:`, `fix:`, `chore:`, `refactor:`, `docs:`, `perf:`, or `BREAKING CHANGE:` in your commit messages.
+2. **Merge to `main`** — release-please automatically opens (or updates) a **Release PR** that bumps `package.json`, updates `CHANGELOG.md`, and prepares the next semantic version.
+3. **Merge the Release PR** — release-please creates a GitHub Release and pushes the version tag (`vX.Y.Z`).
+4. **Auto-publish to npm** — `.github/workflows/publish.yml` triggers on `release: published` and runs `bun check`, optional build/test, and `npm publish --provenance --access public`.
+
+No manual tag pushing is required for normal releases.
+
+### One-time setup (npm)
+
+**npm Trusted Publisher:** Go to [npmjs.com](https://www.npmjs.com) → Package → Settings → Trusted Publisher → GitHub Actions. Set repository `homescriptone/opencode-viewer-extender` and workflow `publish.yml`. No `NPM_TOKEN` secret is needed.
+
+### Manual fallback (if needed)
+
+If you ever need to release manually, push a semantic version tag. The publish workflow also supports `workflow_dispatch`, but the automated path is preferred.
 
 ```bash
-git tag v1.3.0 && git push origin v1.3.0
+git tag v1.4.0
+git push origin v1.4.0
 ```
-
-[`.github/workflows/publish.yml`](.github/workflows/publish.yml) then type-checks and runs `npm publish` with provenance.
-
-One-time setup on [npmjs.com](https://www.npmjs.com): open the package → **Settings** → **Trusted Publisher** → **GitHub Actions**, and set the repository (`homescriptone/opencode-viewer-extended`) and workflow filename (`publish.yml`). No `NPM_TOKEN` secret is required.
 
 ## Contributing
 
-**Pull requests are welcome and encouraged!** Bug fixes, features, docs, and new plugins are all appreciated.
+**Pull requests are welcome and encouraged!** Bug fixes, features, documentation improvements, and new plugins are all appreciated.
 
-- Fork the repo, create a branch, and make your change.
-- Run `bun run dev` while developing and `bun run typecheck` before opening the PR.
-- Keep PRs focused and describe what changed and why.
+1. Fork the repo and create a feature branch.
+2. Run `bun run dev` while developing.
+3. Run `bun run typecheck` before opening your PR to ensure type correctness.
+4. Keep PRs focused and clearly describe what changed and why.
 
-Questions and ideas are welcome too — open an issue at
-[github.com/homescriptone/opencode-viewer-extended/issues](https://github.com/homescriptone/opencode-viewer-extended/issues).
+Questions, ideas, or bug reports are welcome — open an issue at [github.com/homescriptone/opencode-viewer-extended/issues](https://github.com/homescriptone/opencode-viewer-extended/issues).
 
 ## Credits
 
-Maintained by [homescriptone Solutions Ltd](https://github.com/homescriptone). Built on
-[opencode-viewer](https://github.com/leeweisern/opencode-viewer) by its original author
-[leeweisern](https://github.com/leeweisern) — thank you.
+Maintained by [homescriptone Solutions Ltd](https://github.com/homescriptone). Built on [opencode-viewer](https://github.com/leeweisern/opencode-viewer) by [leeweisern](https://github.com/leeweisern) — thank you.
 
 ## License
 

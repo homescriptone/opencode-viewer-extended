@@ -1,6 +1,6 @@
 {
   "name": "@homescriptone/opencode-viewer-extender",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Local GUI to browse, edit, and export your OpenCode sessions, messages, and tool calls from the SQLite database, with a plugin API",
   "bin": {
     "opencode-viewer": "bin/cli.js"
